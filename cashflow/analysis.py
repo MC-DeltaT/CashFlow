@@ -165,8 +165,8 @@ def plot_funds_over_time(account_records: Sequence[AccountBalancesRecord],
 
     def plot_balances(dates: Sequence[date], min_balances: Sequence[float], max_balances: Sequence[float],
             mean_balances: Sequence[float], label: str) -> None:
-        min_widths = [mean - min_ for mean, min_ in zip(mean_balances, min_balances)]
-        max_widths = [max_ - mean for mean, max_ in zip(mean_balances, max_balances)]
+        min_widths = [mean - min_ for mean, min_ in zip(mean_balances, min_balances, strict=True)]
+        max_widths = [max_ - mean for mean, max_ in zip(mean_balances, max_balances, strict=True)]
         plot = pyplot.errorbar(dates, mean_balances, yerr=(min_widths, max_widths), label=label)
         plot[-1][0].set_linestyle('--')
 

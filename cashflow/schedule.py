@@ -59,12 +59,13 @@ class Once(EventSchedule):
     date: date | DateDistribution
 
     def iterate(self, date_range: DateRange, /) -> tuple[DateDistribution] | tuple[()]:
-        if isinstance(self.date, DiscreteDistribution) and self.date.could_occur_in(date_range):
-            return (self.date,)
-        elif isinstance(self.date, date) and self.date in date_range:
-            return (DateDistribution.singular(self.date),)
-        else:
-            return ()
+        match self.date:
+            case DiscreteDistribution() as distribution if distribution.could_occur_in(date_range):
+                return (distribution,)
+            case date() as d if d in date_range:
+                return (DateDistribution.singular(d),)
+            case _:
+                return ()
 
 
 @dataclass(frozen=True, eq=False)
@@ -187,12 +188,15 @@ class Weekly(EventSchedule):
 
     @property
     def _day_schedule(self) -> DayOfWeekSchedule:
-        if isinstance(self.day, DayOfWeekSchedule):
-            return self.day
-        elif isinstance(self.day, DiscreteDistribution):
-            return SimpleDayOfWeekSchedule((self.day,))
-        else:
-            return SimpleDayOfWeekSchedule((DayOfWeekDistribution.singular(self.day),))
+        match self.day:
+            case DayOfWeekSchedule() as schedule:
+                return schedule
+            case DiscreteDistribution() as distribution:
+                return SimpleDayOfWeekSchedule((distribution,))
+            case int(day):
+                return SimpleDayOfWeekSchedule((DayOfWeekDistribution.singular(day),))
+            case _:
+                raise TypeError('day')
 
     def _is_excepted(self, occurrence: date) -> bool:
         for exception in self.exceptions:
@@ -267,12 +271,15 @@ class Monthly(EventSchedule):
 
     @property
     def _day_schedule(self) -> DayOfMonthSchedule:
-        if isinstance(self.day, DayOfMonthSchedule):
-            return self.day
-        elif isinstance(self.day, DiscreteDistribution):
-            return SimpleDayOfMonthSchedule((self.day,))
-        else:
-            return SimpleDayOfMonthSchedule((DayOfMonthDistribution.singular(self.day),))
+        match self.day:
+            case DayOfMonthSchedule() as schedule:
+                return schedule
+            case DiscreteDistribution() as distribution:
+                return SimpleDayOfMonthSchedule((distribution,))
+            case int(day):
+                return SimpleDayOfMonthSchedule((DayOfMonthDistribution.singular(day),))
+            case _:
+                raise TypeError('day')
 
     def _is_excepted(self, occurrence: date) -> bool:
         for exception in self.exceptions:
