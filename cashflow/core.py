@@ -169,9 +169,9 @@ def generate_account_balance_events(cash_flows: Iterable[CashFlowOccurrence], /,
             # Date lower bound - first time the event could occur (within the timeframe we're interested in).
             # Lower bound is at the start of the day of occurrence.
             if source_is_account:
-                yield AccountBalanceEvent(occurrence.date, source, CashDelta(min=-amount.upper_bound))
+                yield AccountBalanceEvent(occurrence.date, source, CashDelta(min=-amount.max))
             if sink_is_account:
-                yield AccountBalanceEvent(occurrence.date, sink, CashDelta(max=amount.upper_bound))
+                yield AccountBalanceEvent(occurrence.date, sink, CashDelta(max=amount.max))
         # Mean increases linearly up to the end of the day of occurrence (i.e. the following day).
         if source_is_account:
             # Since this event occurs on the following day, we have to defer yielding until later to preserve
@@ -187,9 +187,9 @@ def generate_account_balance_events(cash_flows: Iterable[CashFlowOccurrence], /,
             # Date upper bound - event must have occurred by now.
             # Upper bound is at the end of the day of occurrence (i.e. the following day).
             if source_is_account:
-                defer_queue.append(AccountBalanceEvent(following_date, source, CashDelta(max=-amount.lower_bound)))
+                defer_queue.append(AccountBalanceEvent(following_date, source, CashDelta(max=-amount.min)))
             if sink_is_account:
-                defer_queue.append(AccountBalanceEvent(following_date, sink, CashDelta(min=amount.lower_bound)))
+                defer_queue.append(AccountBalanceEvent(following_date, sink, CashDelta(min=amount.min)))
         seen_cash_flow_events.add(occurrence.event)
 
 

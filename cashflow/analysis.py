@@ -43,10 +43,10 @@ def generate_cash_flow_logs(cash_flows: Iterable[CashFlowOccurrence], /,
             # Combined lower and upper bound.
             marker = '-'
 
-        if cash_flow.amount.lower_bound == cash_flow.amount.upper_bound:
-            amount_str = f'${round(cash_flow.amount.lower_bound, 2)}'
+        if cash_flow.amount.min == cash_flow.amount.max:
+            amount_str = f'${round(cash_flow.amount.min, 2)}'
         else:
-            amount_str = f'${cash_flow.amount.lower_bound}-${cash_flow.amount.upper_bound}'
+            amount_str = f'${cash_flow.amount.min}-${cash_flow.amount.max}'
 
         return f'{event_date} {marker} | {amount_str} from "{cash_flow.source.label}" to "{cash_flow.sink.label}"'
 
@@ -89,11 +89,11 @@ def summarise_cash_flows(cash_flows: Collection[CashFlowOccurrence], label: str,
     """Calculates bounds on the total amount of cash transferred by `cash_flows`."""
 
     events = {occurrence.event for occurrence in cash_flows}
-    max_amount = sum(event.cash_flow.amount.upper_bound for event in events)
+    max_amount = sum(event.cash_flow.amount.max for event in events)
     # Floating point error can cause cumulative probability to be slightly less than 1 even for certain events.
     certain_occurrences = (occurrence for occurrence in cash_flows
                            if effectively_certain(occurrence.cumulative_probability, tolerance=certainty_tolerance))
-    min_amount = sum(occurrence.event.cash_flow.amount.lower_bound for occurrence in certain_occurrences)
+    min_amount = sum(occurrence.event.cash_flow.amount.min for occurrence in certain_occurrences)
     return CashFlowSummary(label, min_amount, max_amount)
 
 

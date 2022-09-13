@@ -239,31 +239,49 @@ class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
         return cls(outcomes)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class FloatDistribution:
     """A probability distribution on the real numbers."""
 
-    lower_bound: float      # Inclusive
-    upper_bound: float      # Inclusive
+    min: float
+    max: float
     mean: float
+
+    def __post_init__(self) -> None:
+        if not self.min <= self.mean <= self.max:
+            raise ValueError('min <= mean <= max must be true')
 
     @classmethod
     def singular(cls, value: float, /):
         """Creates a distribution with a single value with 100% probability."""
 
-        return cls(value, value, value)
+        return cls(min=value, max=value, mean=value)
 
     @classmethod
     def uniformly_in(cls, lower_bound: float, upper_bound: float):
         """Creates a uniform distribution on the interval [`lower_bound`, `upper_bound`]."""
 
-        return cls(lower_bound, upper_bound, (lower_bound + upper_bound) / 2)
+        return cls(min=lower_bound, max=upper_bound, mean=(lower_bound + upper_bound) / 2)
 
     @classmethod
     def uniformly_around(cls, centre: float, radius: float):
         """Creates a uniform distribution on the interval [`centre` - `radius`, `centre` + `radius`]"""
 
-        return cls(centre - radius, centre + radius, centre)
+        radius = abs(radius)
+        return cls(min=centre - radius, max=centre + radius, mean=centre)
+
+    def __neg__(self):
+        return type(self)(min=-self.max, max=-self.min, mean=-self.mean)
+
+    def __mul__(self, other: float, /):
+        if other >= 0:
+            return type(self)(min=self.min * other, max=self.max * other, mean=self.mean * other)
+        else:
+            # If multiplier is negative, need to swap min and max.
+            return type(self)(min=self.max * other, max=self.min * other, mean=self.mean * other)
+
+    def __rmul__(self, other: float, /):
+        return self * other
 
 
 DEFAULT_CERTAINTY_TOLERANCE = 1e-6
