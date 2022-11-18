@@ -144,12 +144,12 @@ class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
     outcomes: Sequence[DiscreteOutcome[TOrdered]]       # Sorted in ascending order.
 
     def __post_init__(self) -> None:
-        if not all(self.outcomes[i].value <= self.outcomes[i + 1].value for i in range(len(self.outcomes) - 1)):
+        if not all(self.outcomes[i].value < self.outcomes[i + 1].value for i in range(len(self.outcomes) - 1)):
             raise ValueError('outcomes must have strictly increasing values')
         if not all(self.outcomes[i].cumulative_probability + self.outcomes[i].probability
                     <= self.outcomes[i + 1].cumulative_probability
                    for i in range(len(self.outcomes) - 1)):
-            raise ValueError('outcomes must have strictly increasing cumulative probabilities')
+            raise ValueError('outcomes must have monotonically increasing cumulative probabilities')
 
     @classmethod
     def from_weights(cls, value_weights: Mapping[TOrdered, float], /):
@@ -232,10 +232,9 @@ class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
         if clamp_cumulative_up and outcomes:
             diff = 1 - outcomes[-1].cumulative_probability
             if 0 < diff < clamp_cumulative_up:
-                outcomes[-1] = replace(outcomes[-1], cumulative_probability=1)
-                if len(outcomes) > 1:
-                    # Also need to increase the previous outcome's probability to have a consistent distribution.
-                    outcomes[-2] = replace(outcomes[-2], probability=outcomes[-2].probability + diff)
+                # Also need to increase the last outcome's probability to have a consistent distribution.
+                outcomes[-1] = replace(outcomes[-1],
+                    probability=outcomes[-1].probability + diff, cumulative_probability=1)
         return cls(outcomes)
 
 
