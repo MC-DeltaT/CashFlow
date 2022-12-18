@@ -1,13 +1,10 @@
-"""Event schedules."""
-
-
 from abc import ABC, abstractmethod
 from calendar import FRIDAY, SATURDAY
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
-from typing import Collection, Iterable, Sequence
+from datetime import date
 
-from .datetime import DateRange, DayOfMonthNumeral, DayOfWeekNumeral, Month, Week
+from .date_time import DateRange, DayOfMonthNumeral, DayOfWeekNumeral, Month, Week
 from .probability import DiscreteDistribution
 
 
@@ -39,10 +36,15 @@ class EventSchedule(ABC):
 
     @abstractmethod
     def iterate(self, date_range: DateRange, /) -> Iterable[DateDistribution]:
-        """Iterates occurrences in the schedule within the specified range of dates.
-            Occurences are ordered roughly in chronological order, but their distributions may overlap."""
+        """Iterates possible events in the schedule within the specified range of dates.
+            Events are ordered roughly in chronological order, but their distributions may overlap.
+
+            Each event is guaranteed to have a nonzero probability of occurring within `date_range`, however the events
+            are not restricted to contain outcomes only within `date_range`."""
 
         raise NotImplementedError()
+
+    # TODO? cache schedule iteration
 
 
 class Never(EventSchedule):
@@ -60,7 +62,7 @@ class Once(EventSchedule):
 
     def iterate(self, date_range: DateRange, /) -> tuple[DateDistribution] | tuple[()]:
         match self.date:
-            case DiscreteDistribution() as distribution if distribution.could_occur_in(date_range):
+            case DiscreteDistribution() as distribution if distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                 return (distribution,)
             case date() as d if d in date_range:
                 return (DateDistribution.singular(d),)
@@ -79,7 +81,7 @@ class Daily(EventSchedule):
         return (DateDistribution.singular(occurrence) for occurrence in date_range & self.range
                 if not self._is_excepted(occurrence))
 
-    def _is_excepted(self, occurrence: date) -> bool:
+    def _is_excepted(self, occurrence: date, /) -> bool:
         for exception in self.exceptions:
             if occurrence == exception or (isinstance(exception, DateRange) and occurrence in exception):
                 return True
@@ -97,7 +99,7 @@ class Weekdays(EventSchedule):
         return (DateDistribution.singular(occurrence) for occurrence in date_range & self.range
                 if occurrence.weekday() <= FRIDAY and not self._is_excepted(occurrence))
 
-    def _is_excepted(self, occurrence: date) -> bool:
+    def _is_excepted(self, occurrence: date, /) -> bool:
         for exception in self.exceptions:
             if occurrence == exception or (isinstance(exception, DateRange) and occurrence in exception):
                 return True
@@ -131,7 +133,7 @@ class DayOfWeekSchedule(ABC):
 
     @abstractmethod
     def iterate(self, week: Week, /) -> Iterable[DayOfWeekDistribution]:
-        """Iterates occurrences in the schedule within the specified week.
+        """Iterates possible occurrences in the schedule within the specified week.
             Occurrences are ordered roughly in chronological order, but their distributions may overlap."""
 
         raise NotImplementedError()
@@ -144,7 +146,7 @@ class SimpleDayOfWeekSchedule(DayOfWeekSchedule):
     distributions: Sequence[DayOfWeekDistribution]
 
     def iterate(self, week: Week, /) -> Iterable[DayOfWeekDistribution]:
-        return self.distributions
+        return (distribution for distribution in self.distributions if distribution.has_possible_outcomes)
 
 
 @dataclass(frozen=True, eq=False)
@@ -171,7 +173,7 @@ class Weekly(EventSchedule):
 
             start_week = Week.of(self.range.inclusive_lower_bound)
             week = Week.of(date_range.first_day)
-            last_week = Week.of(date_range.exclusive_upper_bound + timedelta(days=-1))
+            last_week = Week.of(date_range.inclusive_upper_bound)
 
             while week <= last_week:
                 period_diff = (week - start_week) % self.period
@@ -182,7 +184,7 @@ class Weekly(EventSchedule):
                         # probabilities of the other occurrences are not affected. (Occurrences outside the range can
                         # still occur, they just won't be observed.)
                         date_distribution = date_distribution.drop(self._is_excepted)
-                        if date_distribution.could_occur_in(date_range):
+                        if date_distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                             yield date_distribution
                 week += self.period - period_diff
 
@@ -198,7 +200,7 @@ class Weekly(EventSchedule):
             case _:
                 raise TypeError('day')
 
-    def _is_excepted(self, occurrence: date) -> bool:
+    def _is_excepted(self, occurrence: date, /) -> bool:
         for exception in self.exceptions:
             if occurrence == exception or (isinstance(exception, DateRange) and occurrence in exception):
                 return True
@@ -214,7 +216,7 @@ class DayOfMonthSchedule(ABC):
 
     @abstractmethod
     def iterate(self, month: Month, /) -> Iterable[DayOfMonthDistribution]:
-        """Iterates occurrences in the schedule within the specified month.
+        """Iterates possible occurrences in the schedule within the specified month.
             Occurrences are ordered roughly in chronological order, but their distributions may overlap."""
 
         raise NotImplementedError()
@@ -227,7 +229,7 @@ class SimpleDayOfMonthSchedule(DayOfMonthSchedule):
     distributions: Sequence[DayOfMonthDistribution]
 
     def iterate(self, month: Month, /) -> Iterable[DayOfMonthDistribution]:
-        return self.distributions
+        return (distribution for distribution in self.distributions if distribution.has_possible_outcomes)
 
 
 @dataclass(frozen=True, eq=False)
@@ -254,7 +256,7 @@ class Monthly(EventSchedule):
 
             start_month = Month.of(self.range.inclusive_lower_bound)
             month = Month.of(date_range.first_day)
-            last_month = Month.of(date_range.exclusive_upper_bound + timedelta(days=-1))
+            last_month = Month.of(date_range.inclusive_upper_bound)
 
             while month <= last_month:
                 period_diff = (month - start_month) % self.period
@@ -265,7 +267,7 @@ class Monthly(EventSchedule):
                         # probabilities of the other occurrences are not affected. (Occurrences outside the range can
                         # still occur, they just won't be observed.)
                         date_distribution = date_distribution.drop(self._is_excepted)
-                        if date_distribution.could_occur_in(date_range):
+                        if date_distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                             yield date_distribution
                 month += self.period - period_diff
 
@@ -281,7 +283,7 @@ class Monthly(EventSchedule):
             case _:
                 raise TypeError('day')
 
-    def _is_excepted(self, occurrence: date) -> bool:
+    def _is_excepted(self, occurrence: date, /) -> bool:
         for exception in self.exceptions:
             if occurrence == exception or (isinstance(exception, DateRange) and occurrence in exception):
                 return True

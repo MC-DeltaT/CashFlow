@@ -1,10 +1,8 @@
-"""Date and time-related utilities."""
-
-
 from calendar import MONDAY
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Iterator, Literal, cast
+from typing import Literal, cast
 
 from dateutil.relativedelta import relativedelta
 
@@ -31,6 +29,10 @@ class Month:
     year: int
     month: MonthNumeral
 
+    def __post_init__(self) -> None:
+        if not 1 <= self.month <= 12:
+            raise ValueError('month must be in the range [1, 12]')
+
     @classmethod
     def of(cls, d: date, /):
         """Takes the month that a date is within."""
@@ -39,7 +41,7 @@ class Month:
 
     @property
     def date_range(self) -> 'DateRange':
-        """Gets the range of dates this month spans."""
+        """Returns the range of dates this month spans."""
 
         first_day = self.day(1)
         return DateRange.half_open(first_day, first_day + relativedelta(months=1))
@@ -84,17 +86,19 @@ class Week:
     def of(cls, d: date, /):
         """Takes the week that a date is within."""
 
-        return cls(d + relativedelta(weekday=MONDAY))
+        return cls(d + timedelta(days=-d.weekday()))
 
     @property
     def date_range(self) -> 'DateRange':
-        """Gets the range of dates this week spans."""
+        """Returns the range of dates this week spans."""
 
         return DateRange.half_open(self.start, self.start + relativedelta(weeks=1))
 
-    def day(self, day: DayOfWeekNumeral) -> date:
+    def day(self, day: DayOfWeekNumeral, /) -> date:
         """Creates a date within this week."""
 
+        if not 0 <= day <= 6:
+            raise ValueError('day must be in the range [0, 6]')
         return self.start + relativedelta(weekday=day)
 
     def __contains__(self, d: date | datetime, /) -> bool:
@@ -105,12 +109,12 @@ class Week:
             d = d.date()
         return d in self.date_range
 
-    def __add__(self, weeks: int):
+    def __add__(self, weeks: int, /):
         """Adds a number of weeks."""
 
         return self.of(self.start + relativedelta(weeks=weeks))
 
-    def __sub__(self, other: 'Week') -> int:
+    def __sub__(self, other: 'Week', /) -> int:
         """Finds the number of weeks between two weeks."""
 
         return (self.start - other.start).days // 7
@@ -210,7 +214,7 @@ class DateRange:
 
     @property
     def first_day(self) -> date:
-        """Gets the first day within the range.
+        """Returns the first day within the range.
 
             :except ValueError: If the range is empty or has no lower bound."""
 
@@ -221,7 +225,7 @@ class DateRange:
 
     @property
     def last_day(self) -> date:
-        """Gets the last day within the range.
+        """Returns the last day within the range.
 
             :except ValueError: If the range is empty or has no upper bound."""
 
@@ -229,6 +233,14 @@ class DateRange:
             raise ValueError('Empty range does not have a last day')
         else:
             return self.exclusive_upper_bound + timedelta(days=-1)
+
+    @property
+    def inclusive_upper_bound(self) -> date:
+        """Returns the day before the exclusive upper bound.
+
+            Warning: this value is most likely not useful if the range is empty."""
+
+        return self.exclusive_upper_bound + timedelta(days=-1)
 
     def __iter__(self) -> Iterator[date]:
         """Iterates all dates within the range, in chronological order."""

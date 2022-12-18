@@ -1,10 +1,8 @@
 from calendar import MONDAY, SATURDAY, SUNDAY
 from datetime import date
 
-from cashflow.analysis import generate_cash_flow_logs, plot_funds_over_time, simulate_cash_flows, summarise_cash_flows
-from cashflow.core import Account
-from cashflow.datetime import DateRange
-from cashflow.helpers import ExpenseSink, IncomeSource, ScheduleBuilder, tagset
+from cashflow.date_time import DateRange
+from cashflow.frontend import Account, ExpenseSink, IncomeSource, ScheduleBuilder, tagset
 from cashflow.probability import FloatDistribution
 from cashflow.schedule import DayOfWeekDistribution, Monthly, Once, Weekdays, Weekly
 
@@ -42,7 +40,7 @@ schedule.transfer('Investment', Monthly(1, all_year, period=3), 500, general_acc
 # Timeframe in which we're doing the projection and analysis.
 analysis_range = all_year
 
-# Can leave these out to get change in account balances rather than absolute values.
+# Can leave these out to project change in account balances rather than absolute values.
 initial_account_balances = {
     general_account: 5000,
     savings_account: 10000,
@@ -50,24 +48,16 @@ initial_account_balances = {
 }
 
 
-# Generate all possible cash flows occurring in the analysis timeframe.
-cash_flows = list(schedule.iterate_occurrences(analysis_range))
-
-# Simulate the cash flows, which gives us a projection of account balances over time.
-account_balances = simulate_cash_flows(cash_flows, accounts, analysis_range, initial_account_balances)
+analysis = schedule.make_analysis(analysis_range)
 
 # Print out a description of each cash flow event.
-for log in generate_cash_flow_logs(cash_flows):
-    print(log)
+analysis.log_cash_flows()
 print()
 
 # Summarise total income, expenses, and savings.
-print(summarise_cash_flows(
-    [occurrence for occurrence in cash_flows if isinstance(occurrence.event.cash_flow.source, IncomeSource)], 'income'))
-print(summarise_cash_flows(
-    [occurrence for occurrence in cash_flows if isinstance(occurrence.event.cash_flow.sink, ExpenseSink)], 'expenses'))
-print(summarise_cash_flows(
-    [occurrence for occurrence in cash_flows if 'savings' in occurrence.event.cash_flow.sink.tags], 'savings'))
+analysis.summarise_cash_flows('income', lambda cash_flow: isinstance(cash_flow.source, IncomeSource))
+analysis.summarise_cash_flows('expenses', lambda cash_flow: isinstance(cash_flow.sink, ExpenseSink))
+analysis.summarise_cash_flows('savings', lambda cash_flow: isinstance(cash_flow.sink, Account) and 'savings' in cash_flow.sink.tags)
 
-# Plot account balances over time, plus our net savings.
-plot_funds_over_time(account_balances, ('Net savings', lambda account: 'savings' in account.tags))
+# Plot projected account balances over time.
+analysis.plot_balances_over_time(accounts, initial_account_balances)

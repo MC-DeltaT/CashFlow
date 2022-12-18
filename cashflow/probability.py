@@ -1,60 +1,37 @@
-"""Probability-related functionality."""
-
-
-from abc import ABC, abstractmethod
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Callable, DefaultDict, Generic, Iterable, Iterator, Mapping, Protocol, Sequence, TypeVar
+from typing import Callable, Generic, TypeVar, Union
+
+from .utility import Ordered
 
 
 __all__ = [
     'DEFAULT_CERTAINTY_TOLERANCE',
     'DiscreteDistribution',
-    'DiscreteInterval',
     'DiscreteOutcome',
     'effectively_certain',
-    'ExplicitDiscreteDistribution',
     'FloatDistribution'
 ]
 
 
-TOrdered = TypeVar('TOrdered', bound='Ordered')
-TOrdered2 = TypeVar('TOrdered2', bound='Ordered')
-TOrdered_co = TypeVar('TOrdered_co', bound='Ordered', covariant=True)
+TOrdered = TypeVar('TOrdered', bound=Ordered)
+TOrdered2 = TypeVar('TOrdered2', bound=Ordered)
 
 
-class Ordered(Protocol):
-    """A type with a total ordering."""
-
-    @abstractmethod
-    def __eq__(self, other: Any, /) -> bool:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def __lt__(self: TOrdered, other: TOrdered, /) -> bool:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def __le__(self: TOrdered, other: TOrdered, /) -> bool:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def __hash__(self) -> int:
-        raise NotImplementedError()
+DEFAULT_CERTAINTY_TOLERANCE = 1e-6
+"""Default tolerance when deciding if a probability is "certain"."""
 
 
-class DiscreteInterval(Protocol[TOrdered_co]):
-    @abstractmethod
-    def __contains__(self, value: Any, /) -> bool:
-        """Checks if `value` is contained within the interval."""
+def effectively_certain(probability: float, /, *, tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> bool:
+    """Checks if a probability is near enough to 1 to be considered "certain" for practical purposes.
+        Often a probability won't be exactly 1 due to floating point errors."""
 
-        raise NotImplementedError()
-
-    @abstractmethod
-    def __iter__(self) -> Iterator[TOrdered_co]:
-        """Iterates all values contained within the interval, in ascending order."""
-
-        raise NotImplementedError()
+    if tolerance < 0:
+        raise ValueError('tolerance must be >= 0')
+    else:
+        return probability >= 1 - tolerance
 
 
 @dataclass(frozen=True)
@@ -70,86 +47,24 @@ class DiscreteOutcome(Generic[TOrdered]):
             raise ValueError('cumulative_probability must be in the range [probability, 1]')
 
 
-class DiscreteDistribution(Generic[TOrdered], ABC):
+@dataclass(frozen=True)
+class DiscreteDistribution(Generic[TOrdered]):
     """A generic probability distribution of discrete outcomes.
         The sum of probabilities of outcomes within the distribution is <= 1."""
 
-    @staticmethod
-    def singular(value: TOrdered, /) -> 'ExplicitDiscreteDistribution[TOrdered]':
-        """Creates a distribution with a single value with 100% probability."""
-
-        return DiscreteDistribution.uniformly_of(value)
-
-    @staticmethod
-    def uniformly_in(values: Iterable[TOrdered], /) -> 'ExplicitDiscreteDistribution[TOrdered]':
-        """Creates a distribution where each of `values` has an equal probability of occurring.
-            The total probability will sum to 1."""
-
-        return ExplicitDiscreteDistribution.from_weights({value: 1 for value in values})
-
-    @staticmethod
-    def uniformly_of(*values: TOrdered) -> 'ExplicitDiscreteDistribution[TOrdered]':
-        """Creates a distribution where each of `values` has an equal probability of occurring.
-            The total probability will sum to 1."""
-
-        return ExplicitDiscreteDistribution.uniformly_in(values)
-
-    @abstractmethod
-    def iterate(self, interval: DiscreteInterval[TOrdered], /) -> Iterable[DiscreteOutcome[TOrdered]]:
-        """Iterates outcomes within `interval` that have nonzero probability, in ascending order."""
-
-        raise NotImplementedError()
-
-    @abstractmethod
-    def drop(self, func: Callable[[TOrdered], bool], /) -> 'DiscreteDistribution[TOrdered]':
-        """Creates a new distribution with outcomes for which `func` returns true are removed.
-            The occurrence probability of each remaining outcome is unchanged, but the cumulative probabilities are
-            updated."""
-
-        raise NotImplementedError()
-
-    @abstractmethod
-    def map_values(self, func: Callable[[TOrdered], TOrdered2]) -> 'DiscreteDistribution[TOrdered2]':
-        """Creates a new distribution with outcome values mapped by `func`.
-            The mapping need not be bijective. If multiple values are mapped to the same new value, the occurrence
-            probabilities will be summed. However, the result must still be a valid distribution (e.g. total probability
-            cannot exceed 1)."""
-
-        raise NotImplementedError()
-
-    def could_occur_in(self, interval: DiscreteInterval[TOrdered], /) -> bool:
-        """Checks if there is any outcomes with nonzero probability within `interval`."""
-
-        return any(True for _ in self.iterate(interval))
-
-    @abstractmethod
-    def __add__(self, other: 'DiscreteDistribution[TOrdered]', /) -> 'DiscreteDistribution[TOrdered]':
-        """Creates a new distribution with outcomes merged from both distributions.
-            The probabilities of the outcomes are adjusted accordingly."""
-
-        raise NotImplementedError()
-
-    @abstractmethod
-    def __mul__(self, other: 'DiscreteDistribution[TOrdered]', /) -> 'DiscreteDistribution[TOrdered]':
-        """Creates a new distribution where each outcome's probability is multiplied by the probability from the other
-            distribution."""
-
-        raise NotImplementedError()
-
-
-@dataclass(frozen=True, eq=False)
-class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
-    """A discrete distribution given by explicit outcome data."""
-
     outcomes: Sequence[DiscreteOutcome[TOrdered]]       # Sorted in ascending order.
 
-    def __post_init__(self) -> None:
-        if not all(self.outcomes[i].value < self.outcomes[i + 1].value for i in range(len(self.outcomes) - 1)):
+    def __init__(self, outcomes: Iterable[DiscreteOutcome[TOrdered]]) -> None:
+        outcomes = tuple(outcomes)
+        if not all(outcomes[i].value < outcomes[i + 1].value for i in range(len(outcomes) - 1)):
             raise ValueError('outcomes must have strictly increasing values')
-        if not all(self.outcomes[i].cumulative_probability + self.outcomes[i].probability
-                    <= self.outcomes[i + 1].cumulative_probability
-                   for i in range(len(self.outcomes) - 1)):
+        if not all(outcomes[i].cumulative_probability + outcomes[i].probability
+                    <= outcomes[i + 1].cumulative_probability
+                   for i in range(len(outcomes) - 1)):
             raise ValueError('outcomes must have monotonically increasing cumulative probabilities')
+        if sum(outcome.probability for outcome in outcomes) > 1:
+            raise ValueError('Sum of probabilities of all outcomes must be in <= 1')
+        super().__setattr__('outcomes', outcomes)
 
     @classmethod
     def from_weights(cls, value_weights: Mapping[TOrdered, float], /):
@@ -166,43 +81,112 @@ class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
 
         return cls._from_probabilities(value_probabilities)
 
-    def iterate(self, interval: DiscreteInterval[TOrdered], /) -> Iterable[DiscreteOutcome[TOrdered]]:
-        return (outcome for outcome in self.outcomes if outcome.value in interval)
+    @classmethod
+    def singular(cls, value: TOrdered, /):
+        """Creates a distribution with a single value with 100% probability."""
 
-    def map_values(self, func: Callable[[TOrdered], TOrdered2]):
-        value_probabilities: DefaultDict[TOrdered2, float] = defaultdict(float)
-        for outcome in self.outcomes:
-            value_probabilities[func(outcome.value)] += outcome.probability
-        return ExplicitDiscreteDistribution[TOrdered2].from_probabilities(value_probabilities)
+        return cls.uniformly_of(value)
+
+    @classmethod
+    def uniformly_in(cls, values: Iterable[TOrdered], /):
+        """Creates a distribution where each of `values` has an equal probability of occurring.
+            The total probability will sum to 1."""
+
+        return cls.from_weights({value: 1 for value in values})
+
+    @classmethod
+    def uniformly_of(cls, *values: TOrdered):
+        """Creates a distribution where each of `values` has an equal probability of occurring.
+            The total probability will sum to 1."""
+
+        return cls.uniformly_in(values)
+
+    def iterate(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) \
+            -> Iterable[DiscreteOutcome[TOrdered]]:
+        """Iterates outcomes within the interval [`inclusive_lower_bound`, `exclusive_upper_bound`) that have nonzero
+            probability, in ascending order."""
+
+        return (outcome for outcome in self.outcomes if inclusive_lower_bound <= outcome.value < exclusive_upper_bound)
+
+    def probability_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> float:
+        """Returns the sum of probability of all outcomes in the interval
+            [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
+        
+        return sum(outcome.probability for outcome in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
+
+    def possible_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> bool:
+        """Checks if there are any outcomes with nonzero probability within the interval
+            [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
+
+        return any(True for _ in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
+
+    def certain_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered,
+            tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> bool:
+        """Checks if the distribution is guaranteed to take on a value within the interval
+            [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
+
+        return effectively_certain(self.probability_in(inclusive_lower_bound, exclusive_upper_bound),
+            tolerance=tolerance)
+
+    @property
+    def has_possible_outcomes(self) -> bool:
+        return len(self.outcomes) > 0
+
+    def lower_bound_inclusive(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
+        """Returns the outcome with the lowest value >= `value`and nonzero probability, or `None` if there is no such
+            outcome."""
+
+        idx = bisect_left(self.outcomes, value, key=lambda outcome: outcome.value)
+        if idx < len(self.outcomes):
+            return self.outcomes[idx]
+        else:
+            return None
+
+    def upper_bound_inclusive(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
+        """Returns the outcome with the highest value <= `value` and nonzero probability, or `None` if there is no such
+            outcome."""
+
+        idx = bisect_right(self.outcomes, value, key=lambda outcome: outcome.value)
+        if idx > 0:
+            return self.outcomes[idx - 1]
+        else:
+            return None
 
     def drop(self, func: Callable[[TOrdered], bool], /):
+        """Creates a new distribution where outcomes for which `func` returns true have 0 probability (i.e. removed).
+            The occurrence probability of each remaining outcome is unchanged, but the cumulative probabilities are
+            updated."""
+
         value_probabilities = {
             outcome.value: outcome.probability for outcome in self.outcomes if not func(outcome.value)}
         # Removing outcomes is guaranteed to reduce the cumulative probability to below 1, so no need to clamp.
         # If no outcomes are removed then this operation is a no-op, so also no need to clamp.
         return self._from_probabilities(value_probabilities, clamp_cumulative_down=False, clamp_cumulative_up=False)
 
-    def __add__(self, other: 'DiscreteDistribution[TOrdered]', /):
-        if not isinstance(other, ExplicitDiscreteDistribution):
-            return NotImplemented
-        value_probabilities = defaultdict(float, {outcome.value: outcome.probability for outcome in self.outcomes})
-        for outcome in other.outcomes:
-            value_probabilities[outcome.value] += outcome.probability
-        for value in value_probabilities:
-            value_probabilities[value] /= 2
-        return self._from_probabilities(value_probabilities)
+    def map_values(self, func: Callable[[TOrdered], TOrdered2], /):
+        """Creates a new distribution with outcome values mapped by `func`.
 
-    def __mul__(self, other: 'DiscreteDistribution[TOrdered]', /):
-        if not isinstance(other, ExplicitDiscreteDistribution):
-            return NotImplemented
-        value_probabilities = defaultdict(lambda: 1, {outcome.value: outcome.probability for outcome in self.outcomes})
-        for outcome in other.outcomes:
-            value_probabilities[outcome.value] *= outcome.probability
-        return self._from_probabilities(value_probabilities)
+            The mapping need not be bijective. If multiple values are mapped to the same new value, the occurrence
+            probabilities will be summed. However, the result must still be a valid distribution (e.g. total probability
+            cannot exceed 1)."""
+
+        value_probabilities: defaultdict[TOrdered2, float] = defaultdict(float)
+        for outcome in self.outcomes:
+            value_probabilities[func(outcome.value)] += outcome.probability
+        return DiscreteDistribution[TOrdered2].from_probabilities(value_probabilities)
+
+    def _find_outcome(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
+        """Returns the outcome with the given value and nonzero probability, or `None` if there is no such outcome."""
+
+        idx = bisect_left(self.outcomes, value, key=lambda outcome: outcome.value)
+        if idx < len(self.outcomes) and self.outcomes[idx].value == value:
+            return self.outcomes[idx]
+        else:
+            return None
 
     _CUMULATIVE_PROBABILITY_CLAMP = 1e-9
     """If the difference between a cumulative probability and 1 is less than this value, then the probability may be
-        clamped to 1 in some circumstances."""
+        clamped to 1 in some circumstances to correct for floating point error."""
 
     @classmethod
     def _from_probabilities(cls, value_probabilities: Mapping[TOrdered, float], /,
@@ -213,6 +197,8 @@ class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
         cumulative_probability = 0
         for value in sorted_values:
             probability = value_probabilities[value]
+            if probability <= 0:
+                raise ValueError('Probabilities must be > 0')
             new_cumulative_probability = cumulative_probability + probability
             # The cumulative probability may exceed 1 slightly due to floating point errors, which we can correct for.
             if clamp_cumulative_down and new_cumulative_probability > 1:
@@ -240,7 +226,7 @@ class ExplicitDiscreteDistribution(DiscreteDistribution[TOrdered]):
 
 @dataclass(frozen=True, kw_only=True)
 class FloatDistribution:
-    """A probability distribution on the real numbers."""
+    """A basic probability distribution on the real numbers."""
 
     min: float
     max: float
@@ -269,8 +255,30 @@ class FloatDistribution:
         radius = abs(radius)
         return cls(min=centre - radius, max=centre + radius, mean=centre)
 
+    def to_str(self, decimals: int = 2) -> str:
+        if decimals < 0:
+            raise ValueError('decimals must be nonnegative')
+
+        def float_to_str(value: float) -> str:
+            return format(round(value, decimals), f'.{decimals}f')
+
+        if abs(self.min - self.max) < 10 ** -decimals:
+            return f'{float_to_str(self.min)}'
+        else:
+            return f'[{float_to_str(self.min)}, ({float_to_str(self.mean)}), {float_to_str(self.max)}]'
+
     def __neg__(self):
         return type(self)(min=-self.max, max=-self.min, mean=-self.mean)
+
+    def __add__(self, other: Union[float, 'FloatDistribution'], /):
+        if isinstance(other, FloatDistribution):
+            # Is this legit maths?
+            return type(self)(min=self.min + other.min, max=self.max + other.max, mean=self.mean + other.mean)
+        else:
+            return type(self)(min=self.min + other, max=self.max + other, mean=self.mean + other)
+
+    def __radd__(self, other: Union[float, 'FloatDistribution'], /):
+        return self + other
 
     def __mul__(self, other: float, /):
         if other >= 0:
@@ -281,17 +289,3 @@ class FloatDistribution:
 
     def __rmul__(self, other: float, /):
         return self * other
-
-
-DEFAULT_CERTAINTY_TOLERANCE = 1e-6
-"""Default tolerance when deciding if a probability is "certain"."""
-
-
-def effectively_certain(probability: float, /, tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> bool:
-    """Checks if a probability is near enough to 1 to be considered "certain" for practical purposes.
-        Often a probability won't be exactly 1 due to floating point errors."""
-
-    if tolerance < 0:
-        raise ValueError('tolerance must be >= 0')
-    else:
-        return probability >= 1 - tolerance
