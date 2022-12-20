@@ -14,9 +14,6 @@ from .schedule import DateDistribution, EventSchedule
 from .utility import merge_by_date
 
 
-# TODO: unit tests
-
-
 __all__ = [
     'accumulate_endpoint_balances',
     'CashBalance',
