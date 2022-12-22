@@ -142,4 +142,137 @@ def test_week_neq() -> None:
     assert Week(date(2022, 12, 19)) != Week(date(2022, 12, 5))
 
 
-# TODO: test DateRange
+def test_date_range_construct_invalid() -> None:
+    with raises(ValueError):
+        DateRange(inclusive_lower_bound=date(2022, 12, 20), exclusive_upper_bound=date(2022, 12, 19))
+
+def test_date_range_inclusive() -> None:
+    d = DateRange.inclusive(date(2022, 8, 7), date(2026, 3, 31))
+    assert d.inclusive_lower_bound == date(2022, 8, 7)
+    assert d.exclusive_upper_bound == date(2026, 4, 1)
+
+def test_date_range_half_open() -> None:
+    d = DateRange.half_open(date(2000, 12, 4), date(2004, 10, 15))
+    assert d.inclusive_lower_bound == date(2000, 12, 4)
+    assert d.exclusive_upper_bound == date(2004, 10, 15)
+
+def test_date_range_singular() -> None:
+    d = DateRange.singular(date(2020, 2, 20))
+    assert d.inclusive_lower_bound == date(2020, 2, 20)
+    assert d.exclusive_upper_bound == date(2020, 2, 21)
+
+def test_date_range_around() -> None:
+    d = DateRange.around(date(2022, 5, 28), 7)
+    assert d.inclusive_lower_bound == date(2022, 5, 21)
+    assert d.exclusive_upper_bound == date(2022, 6, 5)
+
+def test_date_range_beginning_at() -> None:
+    d = DateRange.beginning_at(date(1980, 1, 5))
+    assert d.inclusive_lower_bound
+    assert not d.has_proper_upper_bound
+
+def test_date_range_before() -> None:
+    d = DateRange.before(date(2006, 4, 2))
+    assert not d.has_proper_lower_bound
+    assert d.exclusive_upper_bound == date(2006, 4, 2)
+
+def test_date_range_up_to() -> None:
+    d = DateRange.up_to(date(2007, 8, 20))
+    assert not d.has_proper_lower_bound
+    assert d.exclusive_upper_bound == date(2007, 8, 21)
+
+def test_date_range_all() -> None:
+    d = DateRange.all()
+    assert not d.has_proper_lower_bound
+    assert not d.has_proper_upper_bound
+
+def test_date_range_days_valid() -> None:
+    d = DateRange.inclusive(date(1999, 11, 14), date(2000, 1, 3))
+    assert d.days == 17 + 31 + 3
+
+def test_date_range_day_invalid() -> None:
+    d1 = DateRange.beginning_at(date(2022, 12, 25))
+    with raises(ValueError):
+        d1.days
+    
+    d2 = DateRange.up_to(date(2022, 12, 25))
+    with raises(ValueError):
+        d2.days
+
+def test_date_range_empty_true() -> None:
+    d = DateRange.half_open(date(2022, 6, 7), date(2022, 6, 7))
+    assert d.is_empty
+
+def test_date_range_empty_false() -> None:
+    d = DateRange.singular(date(2022, 8, 9))
+    assert not d.is_empty
+
+def test_date_range_first_day_valid() -> None:
+    d = DateRange.inclusive(date(2022, 11, 1), date(2022, 12, 19))
+    assert d.first_day == date(2022, 11, 1)
+
+def test_date_range_first_day_invalid() -> None:
+    d = DateRange.up_to(date(2022, 12, 18))
+    with raises(ValueError):
+        d.first_day
+
+def test_date_range_last_day_valid() -> None:
+    d = DateRange.inclusive(date(2022, 11, 1), date(2022, 12, 19))
+    assert d.last_day == date(2022, 12, 19)
+
+def test_date_range_last_day_invalid() -> None:
+    d = DateRange.beginning_at(date(2022, 12, 18))
+    with raises(ValueError):
+        d.last_day
+
+def test_date_range_inclusive_upper_bound() -> None:
+    d = DateRange.inclusive(date(2012, 12, 12), date(2013, 11, 15))
+    assert d.inclusive_upper_bound == date(2013, 11, 15)
+
+def test_date_range_iter() -> None:
+    d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
+    expected = [
+        date(2002, 12, 29),
+        date(2002, 12, 30),
+        date(2002, 12, 31),
+        date(2003, 1, 1),
+        date(2003, 1, 2),
+        date(2003, 1, 3),
+        date(2003, 1, 4),
+        date(2003, 1, 5)
+    ]
+    assert list(d) == expected
+
+def test_date_range_len() -> None:
+    d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
+    assert len(d) == 8
+
+def test_date_range_contains_true() -> None:
+    d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
+    assert date(2002, 12, 29) in d
+    assert date(2002, 12, 30) in d
+    assert date(2003, 1, 5) in d
+
+def test_date_range_contains_false() -> None:
+    d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
+    assert date(2002, 12, 28) not in d
+    assert date(2003, 1, 6) not in d
+
+def test_date_range_and_overlapping1() -> None:
+    d1 = DateRange.inclusive(date(2000, 5, 1), date(2000, 6, 1))
+    d2 = DateRange.inclusive(date(2000, 5, 20), date(2000, 7, 3))
+    expected = DateRange.inclusive(date(2000, 5, 20), date(2000, 6, 1))
+    assert d1 & d2 == expected
+
+def test_date_range_and_overlapping2() -> None:
+    d1 = DateRange.inclusive(date(2000, 5, 20), date(2000, 7, 3))
+    d2 = DateRange.inclusive(date(2000, 5, 1), date(2000, 6, 1))
+    expected = DateRange.inclusive(date(2000, 5, 20), date(2000, 6, 1))
+    assert d1 & d2 == expected
+
+def test_date_range_and_disjoint() -> None:
+    d1 = DateRange.half_open(date(2000, 1, 1), date(2000, 2, 1))
+    d2 = DateRange.half_open(date(2000, 2, 1), date(2000, 3, 1))
+    expected = DateRange(inclusive_lower_bound=date(2000, 2, 1), exclusive_upper_bound=date(2000, 2, 1))
+    assert d1 & d2 == expected
+    assert d2 & d1 == expected
