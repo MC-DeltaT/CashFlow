@@ -1,6 +1,6 @@
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import Callable, Generic, TypeVar, Union
 
@@ -52,13 +52,13 @@ class DiscreteDistribution(Generic[TOrdered]):
     """A generic probability distribution of discrete outcomes.
         The sum of probabilities of outcomes within the distribution is <= 1."""
 
-    outcomes: Sequence[DiscreteOutcome[TOrdered]]       # Sorted in ascending order.
+    outcomes: tuple[DiscreteOutcome[TOrdered], ...]     # Sorted in ascending order.
 
     def __init__(self, outcomes: Iterable[DiscreteOutcome[TOrdered]]) -> None:
         outcomes = tuple(outcomes)
         if not all(outcomes[i].value < outcomes[i + 1].value for i in range(len(outcomes) - 1)):
             raise ValueError('outcomes must have strictly increasing values')
-        if not all(outcomes[i].cumulative_probability + outcomes[i].probability
+        if not all(outcomes[i].cumulative_probability + outcomes[i + 1].probability
                     <= outcomes[i + 1].cumulative_probability
                    for i in range(len(outcomes) - 1)):
             raise ValueError('outcomes must have monotonically increasing cumulative probabilities')
@@ -68,7 +68,7 @@ class DiscreteDistribution(Generic[TOrdered]):
 
     @classmethod
     def from_weights(cls, value_weights: Mapping[TOrdered, float], /):
-        """Creates a distribution from a mapping from values to likelihood weights.
+        """Creates a distribution from a mapping of values to likelihood weights.
             The probability of each outcome is formed by normalising the weights to sum to 1."""
 
         total_weight = sum(value_weights.values())
@@ -111,7 +111,7 @@ class DiscreteDistribution(Generic[TOrdered]):
     def probability_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> float:
         """Returns the sum of probability of all outcomes in the interval
             [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
-        
+
         return sum(outcome.probability for outcome in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
 
     def possible_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> bool:
@@ -125,8 +125,11 @@ class DiscreteDistribution(Generic[TOrdered]):
         """Checks if the distribution is guaranteed to take on a value within the interval
             [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
 
-        return effectively_certain(self.probability_in(inclusive_lower_bound, exclusive_upper_bound),
-            tolerance=tolerance)
+        # The max probability is 1, so if the event is certain within the interval, then the interval must span the
+        # entire distribution and the sum of all probabilities must be 1.
+        return (len(self.outcomes) > 0
+            and self.outcomes[0].value >= inclusive_lower_bound and self.outcomes[-1].value < exclusive_upper_bound
+            and effectively_certain(self.outcomes[-1].cumulative_probability, tolerance=tolerance))
 
     @property
     def has_possible_outcomes(self) -> bool:
@@ -206,8 +209,8 @@ class DiscreteDistribution(Generic[TOrdered]):
                 if cumulative_probability < 1 and (diff := new_cumulative_probability - 1) < clamp_cumulative_down:
                     new_cumulative_probability = 1
                     if outcomes:
-                        # Also need to reduce the previous outcome's probability to have a consistent distribution.
-                        outcomes[-1] = replace(outcomes[-1], probability=outcomes[-1].probability - diff)
+                        # Also need to reduce the outcome's probability to have a consistent distribution.
+                        probability -= diff
                 else:
                     # Otherwise we assume the caller has provided invalid probabilities (e.g. total >> 1).
                     raise ValueError('Sum of probabilities must not exceed 1')

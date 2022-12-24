@@ -1,4 +1,5 @@
 from datetime import date
+
 from pytest import raises
 
 from cashflow.date_time import DateRange, Month, Week
@@ -194,7 +195,7 @@ def test_date_range_day_invalid() -> None:
     d1 = DateRange.beginning_at(date(2022, 12, 25))
     with raises(ValueError):
         d1.days
-    
+
     d2 = DateRange.up_to(date(2022, 12, 25))
     with raises(ValueError):
         d2.days
@@ -276,3 +277,13 @@ def test_date_range_and_disjoint() -> None:
     expected = DateRange(inclusive_lower_bound=date(2000, 2, 1), exclusive_upper_bound=date(2000, 2, 1))
     assert d1 & d2 == expected
     assert d2 & d1 == expected
+
+def test_date_range_eq() -> None:
+    d1 = DateRange.half_open(date(2022, 12, 24), date(2024, 4, 30))
+    d2 = DateRange.inclusive(date(2022, 12, 24), date(2024, 4, 29))
+    assert d1 == d2
+
+def test_date_range_neq() -> None:
+    d1 = DateRange.inclusive(date(2022, 12, 24), date(2024, 4, 30))
+    d2 = DateRange.inclusive(date(2022, 12, 24), date(2024, 4, 29))
+    assert d1 != d2
