@@ -248,16 +248,46 @@ def test_date_range_len() -> None:
     d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
     assert len(d) == 8
 
-def test_date_range_contains_true() -> None:
+def test_date_range_contains_bounded() -> None:
     d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
     assert date(2002, 12, 29) in d
     assert date(2002, 12, 30) in d
     assert date(2003, 1, 5) in d
-
-def test_date_range_contains_false() -> None:
-    d = DateRange.inclusive(date(2002, 12, 29), date(2003, 1, 5))
     assert date(2002, 12, 28) not in d
     assert date(2003, 1, 6) not in d
+
+def test_date_range_contains_unbounded_upper() -> None:
+    d = DateRange.beginning_at(date(2022, 12, 27))
+    assert date(2022, 12, 27) in d
+    assert date(2022, 12, 31) in d
+    assert date(2100, 1, 1) in d
+    assert date(2022, 12, 26) not in d
+    assert date(2000, 1, 1) not in d
+
+def test_date_range_contains_unbounded_lower() -> None:
+    d = DateRange.up_to(date(2022, 12, 27))
+    assert date(2022, 12, 27) in d
+    assert date(2022, 6, 8) in d
+    assert date(1900, 5, 18) in d
+    assert date(2022, 12, 28) not in d
+    assert date(2050, 5, 1) not in d
+
+def test_date_range_contains_unbounded() -> None:
+    d = DateRange.all()
+    assert date(2022, 12, 27) in d
+    assert date(2022, 6, 8) in d
+    assert date(1900, 5, 18) in d
+    assert date(2022, 12, 28) in d
+    assert date(2050, 5, 1) in d
+    assert date(2022, 12, 31) in d
+    assert date(2100, 1, 1) in d
+    assert date(2022, 12, 26) in d
+    assert date(2000, 1, 1) in d
+    assert date(2002, 12, 29) in d
+    assert date(2002, 12, 30) in d
+    assert date(2003, 1, 5) in d
+    assert date(2002, 12, 28) in d
+    assert date(2003, 1, 6) in d
 
 def test_date_range_and_overlapping1() -> None:
     d1 = DateRange.inclusive(date(2000, 5, 1), date(2000, 6, 1))
@@ -269,6 +299,12 @@ def test_date_range_and_overlapping2() -> None:
     d1 = DateRange.inclusive(date(2000, 5, 20), date(2000, 7, 3))
     d2 = DateRange.inclusive(date(2000, 5, 1), date(2000, 6, 1))
     expected = DateRange.inclusive(date(2000, 5, 20), date(2000, 6, 1))
+    assert d1 & d2 == expected
+
+def test_date_range_and_overlapping3() -> None:
+    d1 = DateRange.inclusive(date(2016, 4, 1), date(2017, 9, 16))
+    d2 = DateRange.inclusive(date(2016, 4, 1), date(2017, 9, 16))
+    expected = DateRange.inclusive(date(2016, 4, 1), date(2017, 9, 16))
     assert d1 & d2 == expected
 
 def test_date_range_and_disjoint() -> None:
