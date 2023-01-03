@@ -35,6 +35,16 @@ def test_month_day_invalid_date() -> None:
     with raises(ValueError):
         m.day(29)
 
+def test_month_has_day() -> None:
+    m = Month(2020, 2)
+    assert m.has_day(1)
+    assert m.has_day(10)
+    assert m.has_day(28)
+    assert m.has_day(29)
+    assert not m.has_day(30)
+    assert not m.has_day(31)
+    assert not m.has_day(32)
+
 def test_month_contains_true() -> None:
     assert date(2022, 1, 4) in Month(2022, 1)
 

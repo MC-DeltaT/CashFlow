@@ -109,6 +109,10 @@ def test_discrete_distribution_uniformly_of_empty() -> None:
     d = DiscreteDistribution.uniformly_of()
     assert not d.outcomes
 
+def test_discrete_distribution_null() -> None:
+    d = DiscreteDistribution.null()
+    assert not d.outcomes
+
 def test_discrete_distribution_iterate() -> None:
     d = DiscreteDistribution.uniformly_in(range(-10, 20))
     outcomes = tuple(d.iterate(-4, 2))
@@ -221,6 +225,8 @@ def test_discrete_distribution_map_values_not_bijection() -> None:
     assert [o.cumulative_probability for o in result.outcomes] == \
         approx([3/20, 6/20, 8/20, 11/20, 13/20, 16/20, 18/20, 19/20, 20/20])
 
+# TODO: test approx_eq
+
 
 def test_float_distribution_construct_invalid1() -> None:
     with raises(ValueError):
@@ -244,21 +250,22 @@ def test_float_distribution_construct_invalid5() -> None:
 
 def test_float_distribution_singular() -> None:
     d = FloatDistribution.singular(23.456)
+    # Note: not use approx() here, all three values should be exact.
     assert d.min == 23.456
     assert d.max == 23.456
     assert d.mean == 23.456
 
 def test_float_distribution_uniformly_in() -> None:
     d = FloatDistribution.uniformly_in(-0.25, 2)
-    assert d.min == -0.25
-    assert d.max == 2
-    assert d.mean == 0.875
+    assert d.min == approx(-0.25)
+    assert d.max == approx(2)
+    assert d.mean == approx(0.875)
 
 def test_float_distribution_uniformly_around() -> None:
     d = FloatDistribution.uniformly_around(10, 4)
-    assert d.min == 6
-    assert d.max == 14
-    assert d.mean == 10
+    assert d.min == approx(6)
+    assert d.max == approx(14)
+    assert d.mean == approx(10)
 
 def test_float_distribution_to_str_singular() -> None:
     d = FloatDistribution.singular(123.456789)
@@ -268,31 +275,39 @@ def test_float_distribution_to_str_nonsingular() -> None:
     d = FloatDistribution(min=-1.25, mean=3.4444444444, max=5.654)
     assert d.to_str(3) == '[-1.250, (3.444), 5.654]'
 
+# TODO: test approx_eq
+
 def test_float_distribution_neg() -> None:
     d = FloatDistribution(min=-1, max=3, mean=0.5)
     assert -d == FloatDistribution(min=-3, max=1, mean=-0.5)
 
 def test_float_distribution_add_scalar() -> None:
     d = FloatDistribution(min=-1, max=2, mean=0.7)
+    # TODO: use approx
     assert d + 17 == FloatDistribution(min=16, max=19, mean=17.7)
 
 def test_float_distribution_add_distribution() -> None:
     d1 = FloatDistribution(min=-100, max=200, mean=123)
     d2 = FloatDistribution(min=-1, max=330, mean=-0.5)
+    # TODO: use approx
     assert d1 + d2 == FloatDistribution(min=-101, max=530, mean=122.5)
 
 def test_float_distribution_radd_scalar() -> None:
     d = FloatDistribution(min=-1, max=2, mean=0.7)
+    # TODO: use approx
     assert 17 + d == FloatDistribution(min=16, max=19, mean=17.7)
 
 def test_float_distribution_mul_scalar_positive() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
+    # TODO: use approx
     assert d * 1.5 == FloatDistribution(min=-15, max=16.5, mean=4.65)
 
 def test_float_distribution_mul_scalar_negative() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
+    # TODO: use approx
     assert d * -1.5 == FloatDistribution(min=-16.5, max=15, mean=-4.65)
 
 def test_float_distribution_rmul_scalar() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
+    # TODO: use approx
     assert 1.5 * d == FloatDistribution(min=-15, max=16.5, mean=4.65)

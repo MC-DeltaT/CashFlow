@@ -201,12 +201,15 @@ class DayOfMonthSchedule(ABC):
 
 @dataclass(frozen=True, eq=False)
 class SimpleDayOfMonthSchedule(DayOfMonthSchedule):
-    """A basic schedule where each month has the same distribution of occurrences."""
+    """A basic schedule where each month has the same distribution of occurrences.
+        However, for a given month, days in the distribution which would form invalid dates (e.g. February 30th) are
+        dropped."""
 
     distributions: Sequence[DayOfMonthDistribution]
 
     def iterate(self, month: Month, /) -> Iterable[DayOfMonthDistribution]:
-        return (distribution for distribution in self.distributions if distribution.has_possible_outcomes)
+        distributions = (distribution.drop(lambda d: not month.has_day(d)) for distribution in self.distributions)
+        return (distribution for distribution in distributions if distribution.has_possible_outcomes)
 
 
 @dataclass(frozen=True, eq=False)
@@ -239,6 +242,7 @@ class Monthly(EventSchedule):
                 period_diff = (month - start_month) % self.period
                 if period_diff == 0:
                     for day_distribution in day_schedule.iterate(month):
+                        # TODO: what happens to days of month that result in invalid dates?
                         date_distribution = day_distribution.map_values(month.day)
                         # Don't filter out occurrences that aren't in the requested date range, so that the
                         # probabilities of the other occurrences are not affected. (Occurrences outside the range can

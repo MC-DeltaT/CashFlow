@@ -53,6 +53,17 @@ class Month:
 
         return date(self.year, self.month, day)
 
+    def has_day(self, day: DayOfMonthNumeral, /) -> bool:
+        """Checks if a day is valid for this month.
+        
+            An invalid date would be, for example, February 30th."""
+
+        try:
+            self.day(day)
+            return True
+        except ValueError:
+            return False
+
     def __contains__(self, d: date | datetime, /) -> bool:
         """Checks if a date or datetime is within this month.
             If the value is a datetime, the time part is simply ignored."""

@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import Callable, Generic, TypeVar, Union
 
-from .utility import Ordered
+from .utility import Ordered, float_approx_eq
 
 
 __all__ = [
@@ -26,7 +26,7 @@ DEFAULT_CERTAINTY_TOLERANCE = 1e-6
 
 def effectively_certain(probability: float, /, *, tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> bool:
     """Checks if a probability is near enough to 1 to be considered "certain" for practical purposes.
-        Often a probability won't be exactly 1 due to floating point errors."""
+        Often a probability won't be exactly 1 due to floating point inaccuracy."""
 
     if tolerance < 0:
         raise ValueError('tolerance must be >= 0')
@@ -100,6 +100,12 @@ class DiscreteDistribution(Generic[TOrdered]):
             The total probability will sum to 1."""
 
         return cls.uniformly_in(values)
+
+    @classmethod
+    def null(cls):
+        """Creates a distribution where all outcomes have zero probability."""
+
+        return cls(())
 
     def iterate(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) \
             -> Iterable[DiscreteOutcome[TOrdered]]:
@@ -178,6 +184,24 @@ class DiscreteDistribution(Generic[TOrdered]):
             value_probabilities[func(outcome.value)] += outcome.probability
         return DiscreteDistribution[TOrdered2].from_probabilities(value_probabilities)
 
+    @staticmethod
+    def approx_eq(distribution1: 'DiscreteDistribution[TOrdered]', distribution2: 'DiscreteDistribution[TOrdered]', /,
+            *, tolerance: float = 1e-6) -> bool:
+        """Checks if two distributions have the same outcomes and probabilities, tolerating some floating point
+            inaccuracy when comparing probabilities."""
+
+        def outcome_approx_eq(outcome1: DiscreteOutcome[TOrdered], outcome2: DiscreteOutcome[TOrdered]) -> bool:
+            # The outcome values must be exactly equal, because the distribution is designed to be discrete - we don't
+            # care for floating point values.
+            return (outcome1.value == outcome2.value
+                and float_approx_eq(outcome1.probability, outcome2.probability, tolerance=tolerance)
+                and float_approx_eq(outcome1.cumulative_probability, outcome2.cumulative_probability, tolerance=tolerance))
+
+        if len(distribution1.outcomes) != len(distribution2.outcomes):
+            return False
+        else:
+            return all(outcome_approx_eq(o1, o2) for o1, o2 in zip(distribution1.outcomes, distribution2.outcomes))
+
     def _find_outcome(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
         """Returns the outcome with the given value and nonzero probability, or `None` if there is no such outcome."""
 
@@ -189,7 +213,7 @@ class DiscreteDistribution(Generic[TOrdered]):
 
     _CUMULATIVE_PROBABILITY_CLAMP = 1e-9
     """If the difference between a cumulative probability and 1 is less than this value, then the probability may be
-        clamped to 1 in some circumstances to correct for floating point error."""
+        clamped to 1 in some circumstances to correct for floating point inaccuracy."""
 
     @classmethod
     def _from_probabilities(cls, value_probabilities: Mapping[TOrdered, float], /,
@@ -203,7 +227,7 @@ class DiscreteDistribution(Generic[TOrdered]):
             if probability <= 0:
                 raise ValueError('Probabilities must be > 0')
             new_cumulative_probability = cumulative_probability + probability
-            # The cumulative probability may exceed 1 slightly due to floating point errors, which we can correct for.
+            # The cumulative probability may exceed 1 slightly due to floating point inaccuracy, which we can correct.
             if clamp_cumulative_down and new_cumulative_probability > 1:
                 # Only do the correction the first time and if the error is small.
                 if cumulative_probability < 1 and (diff := new_cumulative_probability - 1) < clamp_cumulative_down:
@@ -216,8 +240,8 @@ class DiscreteDistribution(Generic[TOrdered]):
                     raise ValueError('Sum of probabilities must not exceed 1')
             outcomes.append(DiscreteOutcome(value, probability, new_cumulative_probability))
             cumulative_probability = new_cumulative_probability
-        # Due to floating point errors, the final cumulative probability may be slightly less than 1 even if it should
-        # add up to 1, which we can correct for.
+        # Due to floating point inaccuracy, the final cumulative probability may be slightly less than 1 even if it
+        # should add up to 1, which we can correct for.
         if clamp_cumulative_up and outcomes:
             diff = 1 - outcomes[-1].cumulative_probability
             if 0 < diff < clamp_cumulative_up:
@@ -292,3 +316,12 @@ class FloatDistribution:
 
     def __rmul__(self, other: float, /):
         return self * other
+
+    @staticmethod
+    def approx_eq(distribution1: 'FloatDistribution', distribution2: 'FloatDistribution', /, *,
+            tolerance: float = 1e-6) -> bool:
+        """Checks if two distributions have equal min, mean, and max, with tolerance for floating point inaccuracy."""
+
+        return (float_approx_eq(distribution1.min, distribution2.min, tolerance=tolerance)
+            and float_approx_eq(distribution1.max, distribution2.max, tolerance=tolerance)
+            and float_approx_eq(distribution1.mean, distribution2.mean, tolerance=tolerance))

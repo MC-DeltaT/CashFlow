@@ -1,8 +1,8 @@
 from datetime import date
 
-from cashflow.date_time import DateRange
+from cashflow.date_time import DateRange, Month, Week
 from cashflow.probability import DiscreteDistribution
-from cashflow.schedule import Daily, Never, Once, Weekdays
+from cashflow.schedule import Daily, DayOfMonthDistribution, DayOfWeekDistribution, Never, Once, SimpleDayOfMonthSchedule, SimpleDayOfWeekSchedule, Weekdays
 
 
 def test_never_iterate_empty_range() -> None:
@@ -123,4 +123,48 @@ def test_weekdays_iterate_exceptions() -> None:
     )
     assert events == expected
 
-# TODO
+
+# TODO: test Weekends
+
+
+def test_simple_day_of_week_schedule() -> None:
+    d1 = DayOfWeekDistribution.singular(5)
+    d2 = DayOfWeekDistribution.uniformly_of(0, 2)
+    s = SimpleDayOfWeekSchedule((
+        d1,
+        DayOfWeekDistribution.null(),
+        d2
+    ))
+    expected = (d1, d2)
+    assert tuple(s.iterate(Week.of(date(1900, 1, 2)))) == expected
+    assert tuple(s.iterate(Week.of(date(2022, 12, 4)))) == expected
+    assert tuple(s.iterate(Week.of(date(2099, 5, 13)))) == expected
+
+
+# TODO: test Weekly
+
+
+def test_simple_day_of_month_schedule_normal() -> None:
+    d1 = DayOfMonthDistribution.uniformly_of(30)
+    d2 = DayOfMonthDistribution.uniformly_of(1, 3, 5, 29)
+    s = SimpleDayOfMonthSchedule((
+        DayOfMonthDistribution.null(),
+        d1,
+        d2
+    ))
+    expected = (d1, d2)
+    assert tuple(s.iterate(Month(1900, 1))) == expected
+    assert tuple(s.iterate(Month(2022, 12))) == expected
+    assert tuple(s.iterate(Month(2222, 9))) == expected
+
+def test_simple_day_of_month_schedule_invalid_dates() -> None:
+    # TODO
+    s = SimpleDayOfMonthSchedule((
+        DayOfMonthDistribution.uniformly_of(29, 30, 31),
+        DayOfMonthDistribution.uniformly_of(31)
+    ))
+    assert tuple(s.iterate(Month(2020, 2))) == ...
+    assert tuple(s.iterate(Month(2023, 4))) == ...
+
+
+# TODO: test Monthly
