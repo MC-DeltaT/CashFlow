@@ -2,9 +2,10 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from math import isclose
 from typing import Callable, Generic, TypeVar, Union
 
-from .utility import Ordered, float_approx_eq
+from .utility import Ordered
 
 
 __all__ = [
@@ -184,9 +185,8 @@ class DiscreteDistribution(Generic[TOrdered]):
             value_probabilities[func(outcome.value)] += outcome.probability
         return DiscreteDistribution[TOrdered2].from_probabilities(value_probabilities)
 
-    @staticmethod
-    def approx_eq(distribution1: 'DiscreteDistribution[TOrdered]', distribution2: 'DiscreteDistribution[TOrdered]', /,
-            *, tolerance: float = 1e-6) -> bool:
+    def approx_eq(self, other: 'DiscreteDistribution[TOrdered]', /, *, rel_tol: float = 1e-6, abs_tol: float = 0) \
+            -> bool:
         """Checks if two distributions have the same outcomes and probabilities, tolerating some floating point
             inaccuracy when comparing probabilities."""
 
@@ -194,13 +194,14 @@ class DiscreteDistribution(Generic[TOrdered]):
             # The outcome values must be exactly equal, because the distribution is designed to be discrete - we don't
             # care for floating point values.
             return (outcome1.value == outcome2.value
-                and float_approx_eq(outcome1.probability, outcome2.probability, tolerance=tolerance)
-                and float_approx_eq(outcome1.cumulative_probability, outcome2.cumulative_probability, tolerance=tolerance))
+                and isclose(outcome1.probability, outcome2.probability, rel_tol=rel_tol, abs_tol=abs_tol)
+                and isclose(outcome1.cumulative_probability, outcome2.cumulative_probability,
+                    rel_tol=rel_tol, abs_tol=abs_tol))
 
-        if len(distribution1.outcomes) != len(distribution2.outcomes):
+        if len(self.outcomes) != len(other.outcomes):
             return False
         else:
-            return all(outcome_approx_eq(o1, o2) for o1, o2 in zip(distribution1.outcomes, distribution2.outcomes))
+            return all(outcome_approx_eq(o1, o2) for o1, o2 in zip(self.outcomes, other.outcomes))
 
     def _find_outcome(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
         """Returns the outcome with the given value and nonzero probability, or `None` if there is no such outcome."""
@@ -294,6 +295,13 @@ class FloatDistribution:
         else:
             return f'[{float_to_str(self.min)}, ({float_to_str(self.mean)}), {float_to_str(self.max)}]'
 
+    def approx_eq(self, other: 'FloatDistribution', /, *, rel_tol: float = 1e-6, abs_tol: float = 0) -> bool:
+        """Checks if two distributions have equal min, mean, and max, with tolerance for floating point inaccuracy."""
+
+        return (isclose(self.min, other.min, rel_tol=rel_tol, abs_tol=abs_tol)
+            and isclose(self.max, other.max, rel_tol=rel_tol, abs_tol=abs_tol)
+            and isclose(self.mean, other.mean, rel_tol=rel_tol, abs_tol=abs_tol))
+
     def __neg__(self):
         return type(self)(min=-self.max, max=-self.min, mean=-self.mean)
 
@@ -316,12 +324,3 @@ class FloatDistribution:
 
     def __rmul__(self, other: float, /):
         return self * other
-
-    @staticmethod
-    def approx_eq(distribution1: 'FloatDistribution', distribution2: 'FloatDistribution', /, *,
-            tolerance: float = 1e-6) -> bool:
-        """Checks if two distributions have equal min, mean, and max, with tolerance for floating point inaccuracy."""
-
-        return (float_approx_eq(distribution1.min, distribution2.min, tolerance=tolerance)
-            and float_approx_eq(distribution1.max, distribution2.max, tolerance=tolerance)
-            and float_approx_eq(distribution1.mean, distribution2.mean, tolerance=tolerance))

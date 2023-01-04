@@ -38,6 +38,7 @@ class EventSchedule(ABC):
     @abstractmethod
     def iterate(self, date_range: DateRange, /) -> Iterable[DateDistribution]:
         """Iterates possible events in the schedule within the specified range of dates.
+
             Events are ordered roughly in chronological order, but their distributions may overlap.
 
             Each event is guaranteed to have a nonzero probability of occurring within `date_range`, however the events
@@ -117,6 +118,7 @@ class DayOfWeekSchedule(ABC):
     @abstractmethod
     def iterate(self, week: Week, /) -> Iterable[DayOfWeekDistribution]:
         """Iterates possible occurrences in the schedule within the specified week.
+
             Occurrences are ordered roughly in chronological order, but their distributions may overlap."""
 
         raise NotImplementedError()
@@ -194,7 +196,10 @@ class DayOfMonthSchedule(ABC):
     @abstractmethod
     def iterate(self, month: Month, /) -> Iterable[DayOfMonthDistribution]:
         """Iterates possible occurrences in the schedule within the specified month.
-            Occurrences are ordered roughly in chronological order, but their distributions may overlap."""
+
+            Occurrences are ordered roughly in chronological order, but their distributions may overlap.
+
+            Distributions will never contain days with are invalid for the specified month (e.g. 30 for February)."""
 
         raise NotImplementedError()
 
@@ -242,7 +247,6 @@ class Monthly(EventSchedule):
                 period_diff = (month - start_month) % self.period
                 if period_diff == 0:
                     for day_distribution in day_schedule.iterate(month):
-                        # TODO: what happens to days of month that result in invalid dates?
                         date_distribution = day_distribution.map_values(month.day)
                         # Don't filter out occurrences that aren't in the requested date range, so that the
                         # probabilities of the other occurrences are not affected. (Occurrences outside the range can
@@ -275,5 +279,5 @@ def _is_occurrence_excepted(occurrence: date, exceptions: Collection[date | Date
 def _excepted_occurrence_filter(exceptions: Collection[date | DateRange]) -> Callable[[date], bool]:
     def inner(occurrence: date):
         return _is_occurrence_excepted(occurrence, exceptions)
-    
+
     return inner

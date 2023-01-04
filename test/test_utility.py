@@ -48,6 +48,3 @@ def test_merge_by_date_multiple_iterables() -> None:
         TypeWithDate(date(2002, 5, 1), 6+3j)
     )
     assert tuple(merge_by_date((items1, items2, items3, items4))) == expected
-
-
-# TODO: test float_approx_eq

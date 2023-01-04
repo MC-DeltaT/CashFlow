@@ -225,7 +225,15 @@ def test_discrete_distribution_map_values_not_bijection() -> None:
     assert [o.cumulative_probability for o in result.outcomes] == \
         approx([3/20, 6/20, 8/20, 11/20, 13/20, 16/20, 18/20, 19/20, 20/20])
 
-# TODO: test approx_eq
+def test_discrete_distribution_approx_eq() -> None:
+    d1 = DiscreteDistribution.from_probabilities({1: 0.1, 2: 0.2, 3: 0.3})
+    d2 = DiscreteDistribution.from_probabilities({1: 0.11, 2: 0.22, 3: 0.33})
+    d3 = DiscreteDistribution.from_probabilities({1: 0.1, 2: 0.2, 3: 0.3, 4: 0.1})
+    d4 = DiscreteDistribution.from_probabilities({0: 0.1, 2: 0.2, 3: 0.3})
+    assert d1.approx_eq(d2, rel_tol=0.1)
+    assert d1.approx_eq(d2, rel_tol=0.01, abs_tol=0.061)
+    assert not d1.approx_eq(d3, rel_tol=0.1)
+    assert not d1.approx_eq(d4, rel_tol=1, abs_tol=1)
 
 
 def test_float_distribution_construct_invalid1() -> None:
@@ -275,7 +283,17 @@ def test_float_distribution_to_str_nonsingular() -> None:
     d = FloatDistribution(min=-1.25, mean=3.4444444444, max=5.654)
     assert d.to_str(3) == '[-1.250, (3.444), 5.654]'
 
-# TODO: test approx_eq
+def test_float_distribution_approx_eq() -> None:
+    d = FloatDistribution(min=10, max=20, mean=15)
+    assert d.approx_eq(FloatDistribution(min=12, max=20, mean=15), rel_tol=0.1, abs_tol=2)
+    assert d.approx_eq(FloatDistribution(min=11, max=20, mean=15), rel_tol=0.1)
+    assert d.approx_eq(FloatDistribution(min=10, max=22, mean=15), rel_tol=0.1)
+    assert d.approx_eq(FloatDistribution(min=10, max=20, mean=16.5), rel_tol=0.1)
+    assert d.approx_eq(FloatDistribution(min=11, max=22, mean=16.5), rel_tol=0.1)
+    assert not d.approx_eq(FloatDistribution(min=12, max=20, mean=15), rel_tol=0.1)
+    assert not d.approx_eq(FloatDistribution(min=10, max=23, mean=15), rel_tol=0.1)
+    assert not d.approx_eq(FloatDistribution(min=10, max=20, mean=17), rel_tol=0.1)
+    assert not d.approx_eq(FloatDistribution(min=12, max=23, mean=17), rel_tol=0.1)
 
 def test_float_distribution_neg() -> None:
     d = FloatDistribution(min=-1, max=3, mean=0.5)
@@ -283,31 +301,43 @@ def test_float_distribution_neg() -> None:
 
 def test_float_distribution_add_scalar() -> None:
     d = FloatDistribution(min=-1, max=2, mean=0.7)
-    # TODO: use approx
-    assert d + 17 == FloatDistribution(min=16, max=19, mean=17.7)
+    result = d + 17
+    assert result.min == approx(16)
+    assert result.max == approx(19)
+    assert result.mean == approx(17.7)
 
 def test_float_distribution_add_distribution() -> None:
     d1 = FloatDistribution(min=-100, max=200, mean=123)
     d2 = FloatDistribution(min=-1, max=330, mean=-0.5)
-    # TODO: use approx
-    assert d1 + d2 == FloatDistribution(min=-101, max=530, mean=122.5)
+    result = d1 + d2
+    assert result.min == approx(-101)
+    assert result.max == approx(530)
+    assert result.mean == approx(122.5)
 
 def test_float_distribution_radd_scalar() -> None:
     d = FloatDistribution(min=-1, max=2, mean=0.7)
-    # TODO: use approx
-    assert 17 + d == FloatDistribution(min=16, max=19, mean=17.7)
+    result = 17 + d
+    assert result.min == approx(16)
+    assert result.max == approx(19)
+    assert result.mean == approx(17.7)
 
 def test_float_distribution_mul_scalar_positive() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
-    # TODO: use approx
-    assert d * 1.5 == FloatDistribution(min=-15, max=16.5, mean=4.65)
+    result = d * 1.5
+    assert result.min == approx(-15)
+    assert result.max == approx(16.5)
+    assert result.mean == approx(4.65)
 
 def test_float_distribution_mul_scalar_negative() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
-    # TODO: use approx
-    assert d * -1.5 == FloatDistribution(min=-16.5, max=15, mean=-4.65)
+    result = d * -1.5
+    assert result.min == approx(-16.5)
+    assert result.max == approx(15)
+    assert result.mean == approx(-4.65)
 
 def test_float_distribution_rmul_scalar() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
-    # TODO: use approx
-    assert 1.5 * d == FloatDistribution(min=-15, max=16.5, mean=4.65)
+    result = 1.5 * d
+    assert result.min == approx(-15)
+    assert result.max == approx(16.5)
+    assert result.mean == approx(4.65)

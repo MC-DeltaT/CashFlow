@@ -6,7 +6,6 @@ from typing import Any, Protocol, TypeVar
 
 
 __all__ = [
-    'float_approx_eq',
     'merge_by_date',
     'Ordered'
 ]
@@ -44,11 +43,3 @@ THasDate = TypeVar('THasDate', bound=HasDate)
 
 def merge_by_date(iterables: Iterable[Iterable[THasDate]]) -> Iterable[THasDate]:
     return merge(*iterables, key=lambda item: item.date)
-
-
-def float_approx_eq(a: float, b: float, /, *, tolerance: float = 1e-6) -> bool:
-    """Checks if two floating point values are equal within a given tolerance."""
-
-    if tolerance < 0:
-        raise ValueError('tolerance must be nonnegative')
-    return abs(a - b) < tolerance

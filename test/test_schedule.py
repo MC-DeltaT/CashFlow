@@ -158,13 +158,17 @@ def test_simple_day_of_month_schedule_normal() -> None:
     assert tuple(s.iterate(Month(2222, 9))) == expected
 
 def test_simple_day_of_month_schedule_invalid_dates() -> None:
-    # TODO
     s = SimpleDayOfMonthSchedule((
         DayOfMonthDistribution.uniformly_of(29, 30, 31),
         DayOfMonthDistribution.uniformly_of(31)
     ))
-    assert tuple(s.iterate(Month(2020, 2))) == ...
-    assert tuple(s.iterate(Month(2023, 4))) == ...
+    # Leap year.
+    result1 = tuple(s.iterate(Month(2020, 2)))
+    assert len(result1) == 1 and result1[0].approx_eq(DayOfMonthDistribution.from_probabilities({29: 1/3}))
+    # Non-leap year.
+    assert tuple(s.iterate(Month(2023, 2))) == ()
+    result2 = tuple(s.iterate(Month(2023, 4)))
+    assert len(result2) == 1 and result2[0].approx_eq(DayOfMonthDistribution.from_probabilities({29: 1/3, 30: 1/3}))
 
 
 # TODO: test Monthly

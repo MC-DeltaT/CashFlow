@@ -55,7 +55,7 @@ class Month:
 
     def has_day(self, day: DayOfMonthNumeral, /) -> bool:
         """Checks if a day is valid for this month.
-        
+
             An invalid date would be, for example, February 30th."""
 
         try:
