@@ -2,7 +2,9 @@ from datetime import date
 
 from cashflow.date_time import DateRange, Month, Week
 from cashflow.probability import DiscreteDistribution
-from cashflow.schedule import Daily, DayOfMonthDistribution, DayOfWeekDistribution, Never, Once, SimpleDayOfMonthSchedule, SimpleDayOfWeekSchedule, Weekdays
+from cashflow.schedule import (
+    Daily, DayOfMonthDistribution, DayOfWeekDistribution, Never, Once, SimpleDayOfMonthSchedule,
+    SimpleDayOfWeekSchedule, Weekdays, Weekends)
 
 
 def test_never_iterate_empty_range() -> None:
@@ -124,7 +126,40 @@ def test_weekdays_iterate_exceptions() -> None:
     assert events == expected
 
 
-# TODO: test Weekends
+def test_weekends_iterate_no_exceptions() -> None:
+    s = Weekends(DateRange.inclusive(date(2023, 1, 8), date(2023, 3, 13)))
+    events = tuple(s.iterate(DateRange.inclusive(date(2022, 12, 13), date(2023, 2, 9))))
+    expected = (
+        DiscreteDistribution.singular(date(2023, 1, 8)),
+        DiscreteDistribution.singular(date(2023, 1, 14)),
+        DiscreteDistribution.singular(date(2023, 1, 15)),
+        DiscreteDistribution.singular(date(2023, 1, 21)),
+        DiscreteDistribution.singular(date(2023, 1, 22)),
+        DiscreteDistribution.singular(date(2023, 1, 28)),
+        DiscreteDistribution.singular(date(2023, 1, 29)),
+        DiscreteDistribution.singular(date(2023, 2, 4)),
+        DiscreteDistribution.singular(date(2023, 2, 5))
+    )
+    assert events == expected
+
+def test_weekends_iterate_exceptions() -> None:
+    s = Weekends(range=DateRange.inclusive(date(2023, 1, 1), date(2023, 4, 1)),
+        exceptions=(date(2023, 1, 3), DateRange.inclusive(date(2023, 1, 27), date(2023, 2, 11)), date(2023, 2, 26)))
+    events = tuple(s.iterate(DateRange.inclusive(date(2023, 1, 1), date(2023, 3, 1))))
+    expected = (
+        DiscreteDistribution.singular(date(2023, 1, 1)),
+        DiscreteDistribution.singular(date(2023, 1, 7)),
+        DiscreteDistribution.singular(date(2023, 1, 8)),
+        DiscreteDistribution.singular(date(2023, 1, 14)),
+        DiscreteDistribution.singular(date(2023, 1, 15)),
+        DiscreteDistribution.singular(date(2023, 1, 21)),
+        DiscreteDistribution.singular(date(2023, 1, 22)),
+        DiscreteDistribution.singular(date(2023, 2, 12)),
+        DiscreteDistribution.singular(date(2023, 2, 18)),
+        DiscreteDistribution.singular(date(2023, 2, 19)),
+        DiscreteDistribution.singular(date(2023, 2, 25))
+    )
+    assert events == expected
 
 
 def test_simple_day_of_week_schedule() -> None:
