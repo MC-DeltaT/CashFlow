@@ -64,7 +64,8 @@ class Once(EventSchedule):
 
     def iterate(self, date_range: DateRange, /) -> tuple[DateDistribution] | tuple[()]:
         match self.date:
-            case DiscreteDistribution() as distribution if distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
+            case DiscreteDistribution() as distribution \
+                    if distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                 return (distribution,)
             case date() as d if d in date_range:
                 return (DateDistribution.singular(d),)
@@ -77,11 +78,11 @@ class Daily(EventSchedule):
     """Event occurs on all days."""
 
     range: DateRange = DateRange.all()
-    exceptions: Collection[date | DateRange] = ()
+    exclude: Collection[date | DateRange] = ()
 
     def iterate(self, date_range: DateRange, /) -> Iterable[DateDistribution]:
         return (DateDistribution.singular(occurrence) for occurrence in date_range & self.range
-                if not _is_occurrence_excepted(occurrence, self.exceptions))
+                if not _is_occurrence_excluded(occurrence, self.exclude))
 
 
 @dataclass(frozen=True, eq=False)
@@ -89,11 +90,11 @@ class Weekdays(EventSchedule):
     """Event occurs on all Mondays to Fridays."""
 
     range: DateRange = DateRange.all()
-    exceptions: Collection[date | DateRange] = ()
+    exclude: Collection[date | DateRange] = ()
 
     def iterate(self, date_range: DateRange, /) -> Iterable[DateDistribution]:
         return (DateDistribution.singular(occurrence) for occurrence in date_range & self.range
-                if occurrence.weekday() <= FRIDAY and not _is_occurrence_excepted(occurrence, self.exceptions))
+                if occurrence.weekday() <= FRIDAY and not _is_occurrence_excluded(occurrence, self.exclude))
 
 
 @dataclass(frozen=True, eq=False)
@@ -101,11 +102,11 @@ class Weekends(EventSchedule):
     """Event occurs on all Saturdays and Sundays."""
 
     range: DateRange = DateRange.all()
-    exceptions: Collection[date | DateRange] = ()
+    exclude: Collection[date | DateRange] = ()
 
     def iterate(self, date_range: DateRange, /) -> Iterable[DateDistribution]:
         return (DateDistribution.singular(occurrence) for occurrence in date_range & self.range
-                if occurrence.weekday() >= SATURDAY and not _is_occurrence_excepted(occurrence, self.exceptions))
+                if occurrence.weekday() >= SATURDAY and not _is_occurrence_excluded(occurrence, self.exclude))
 
 
 DayOfWeekDistribution = DiscreteDistribution[DayOfWeekNumeral]
@@ -141,7 +142,7 @@ class Weekly(EventSchedule):
     day: DayOfWeekNumeral | DayOfWeekDistribution | DayOfWeekSchedule
     range: DateRange = DateRange.all()
     period: int = 1
-    exceptions: Collection[date | DateRange] = ()
+    exclude: Collection[date | DateRange] = ()
 
     def __post_init__(self) -> None:
         if self.period < 1:
@@ -168,8 +169,9 @@ class Weekly(EventSchedule):
                         # Don't filter out occurrences that aren't in the requested date range, so that the
                         # probabilities of the other occurrences are not affected. (Occurrences outside the range can
                         # still occur, they just won't be observed.)
-                        date_distribution = date_distribution.drop(_excepted_occurrence_filter(self.exceptions))
-                        if date_distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
+                        date_distribution = date_distribution.drop(_excluded_occurrence_filter(self.exclude))
+                        if date_distribution.possible_in(
+                                date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                             yield date_distribution
                 week += self.period - period_diff
 
@@ -221,10 +223,10 @@ class SimpleDayOfMonthSchedule(DayOfMonthSchedule):
 class Monthly(EventSchedule):
     """Event occurs on specified days of month every `period` number of months."""
 
-    day: DayOfMonthNumeral | DayOfMonthDistribution | DayOfMonthSchedule
+    day: DayOfMonthNumeral | DayOfMonthSchedule
     range: DateRange = DateRange.all()
     period: int = 1
-    exceptions: Collection[date | DateRange] = ()
+    exclude: Collection[date | DateRange] = ()
 
     def __post_init__(self) -> None:
         if self.period < 1:
@@ -251,7 +253,7 @@ class Monthly(EventSchedule):
                         # Don't filter out occurrences that aren't in the requested date range, so that the
                         # probabilities of the other occurrences are not affected. (Occurrences outside the range can
                         # still occur, they just won't be observed.)
-                        date_distribution = date_distribution.drop(_excepted_occurrence_filter(self.exceptions))
+                        date_distribution = date_distribution.drop(_excluded_occurrence_filter(self.exclude))
                         if date_distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                             yield date_distribution
                 month += self.period - period_diff
@@ -261,23 +263,26 @@ class Monthly(EventSchedule):
         match self.day:
             case DayOfMonthSchedule() as schedule:
                 return schedule
-            case DiscreteDistribution() as distribution:
-                return SimpleDayOfMonthSchedule((distribution,))
             case int(day):
                 return SimpleDayOfMonthSchedule((DayOfMonthDistribution.singular(day),))
             case _:
                 raise TypeError('day')
 
 
-def _is_occurrence_excepted(occurrence: date, exceptions: Collection[date | DateRange]) -> bool:
-    for exception in exceptions:
-        if occurrence == exception or (isinstance(exception, DateRange) and occurrence in exception):
-            return True
+def _is_occurrence_excluded(occurrence: date, excluded: Collection[date | DateRange]) -> bool:
+    for exclude in excluded:
+        match exclude:
+            case date() as d if occurrence == d:
+                return True
+            case DateRange() as date_range if occurrence in date_range:
+                return True
+            case _:
+                pass
     return False
 
 
-def _excepted_occurrence_filter(exceptions: Collection[date | DateRange]) -> Callable[[date], bool]:
+def _excluded_occurrence_filter(exclude: Collection[date | DateRange], /) -> Callable[[date], bool]:
     def inner(occurrence: date):
-        return _is_occurrence_excepted(occurrence, exceptions)
+        return _is_occurrence_excluded(occurrence, exclude)
 
     return inner

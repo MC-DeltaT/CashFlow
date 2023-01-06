@@ -18,6 +18,8 @@ __all__ = [
 
 
 DayOfWeekNumeral = Literal[0, 1, 2, 3, 4, 5, 6]
+"""0 is Monday, 6 in Sunday."""
+
 DayOfMonthNumeral = Literal[
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
 
@@ -95,7 +97,7 @@ class Week:
 
     @classmethod
     def of(cls, d: date, /):
-        """Takes the week that a date is within."""
+        """Takes the week that a date is within. Note that weeks start on Monday and end on Sunday."""
 
         return cls(d + timedelta(days=-d.weekday()))
 
@@ -106,7 +108,7 @@ class Week:
         return DateRange.half_open(self.start, self.start + relativedelta(weeks=1))
 
     def day(self, day: DayOfWeekNumeral, /) -> date:
-        """Creates a date within this week."""
+        """Creates a date within this week. Note that 0 is Monday."""
 
         if not 0 <= day <= 6:
             raise ValueError('day must be in the range [0, 6]')
