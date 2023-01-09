@@ -197,7 +197,7 @@ def test_discrete_distribution_upper_bound_inclusive() -> None:
     assert d.upper_bound_inclusive(9).value == 8
     assert d.upper_bound_inclusive(100).value == 8
 
-def test_discrete_distribution_drop() -> None:
+def test_discrete_distribution_subset_adjust_cumulative() -> None:
     d = DiscreteDistribution((
         DiscreteOutcome(1, 0.3, 0.3),
         DiscreteOutcome(2, 0.15, 0.45),
@@ -205,10 +205,27 @@ def test_discrete_distribution_drop() -> None:
         DiscreteOutcome(4, 0.2, 0.69),
         DiscreteOutcome(5, 0.2, 0.89)
     ))
-    result = d.drop(lambda v: v % 2 == 0)
+    result = d.subset(lambda v: v % 2 != 0, adjust_cumulative=True)
     assert [o.value for o in result.outcomes] == [1, 3, 5]
     assert [o.probability for o in result.outcomes] == approx([0.3, 0.04, 0.2])
     assert [o.cumulative_probability for o in result.outcomes] == approx([0.3, 0.34, 0.54])
+
+def test_discrete_distribution_subset_no_adjust_cumulative() -> None:
+    d = DiscreteDistribution((
+        DiscreteOutcome(1, 0.3, 0.3),
+        DiscreteOutcome(2, 0.15, 0.45),
+        DiscreteOutcome(3, 0.04, 0.49),
+        DiscreteOutcome(4, 0.2, 0.69),
+        DiscreteOutcome(5, 0.2, 0.89)
+    ))
+    result = d.subset(lambda v: v % 2 != 0, adjust_cumulative=False)
+    expected = (
+        DiscreteOutcome(1, 0.3, 0.3),
+        DiscreteOutcome(3, 0.04, 0.49),
+        DiscreteOutcome(5, 0.2, 0.89)
+    )
+    # No floating point operations, should match exactly.
+    assert result.outcomes == expected
 
 def test_discrete_distribution_map_values_bijection() -> None:
     d = DiscreteDistribution.from_weights({1: 1, 2: 4, 4: 3})

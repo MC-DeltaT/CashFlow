@@ -168,6 +168,9 @@ class DateRange:
     def around(cls, centre: date, days_radius: int):
         """Creates a range centred on `centre` and containing `days_radius` days on either side."""
 
+        if days_radius < 0:
+            raise ValueError('days_radius must be nonnegative')
+
         return cls.inclusive(centre + timedelta(days=-days_radius), centre + timedelta(days=days_radius))
 
     @classmethod

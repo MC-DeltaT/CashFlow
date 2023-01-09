@@ -172,10 +172,19 @@ def test_date_range_singular() -> None:
     assert d.inclusive_lower_bound == date(2020, 2, 20)
     assert d.exclusive_upper_bound == date(2020, 2, 21)
 
-def test_date_range_around() -> None:
+def test_date_range_around_nonzero_radius() -> None:
     d = DateRange.around(date(2022, 5, 28), 7)
     assert d.inclusive_lower_bound == date(2022, 5, 21)
     assert d.exclusive_upper_bound == date(2022, 6, 5)
+
+def test_date_range_around_zero_radius() -> None:
+    d = DateRange.around(date(2023, 1, 8), 0)
+    assert d.inclusive_lower_bound == date(2023, 1, 8)
+    assert d.exclusive_upper_bound == date(2023, 1, 9)
+
+def test_date_range_around_invalid() -> None:
+    with raises(ValueError):
+        DateRange.around(date(2023, 1, 5), -1)
 
 def test_date_range_beginning_at() -> None:
     d = DateRange.beginning_at(date(1980, 1, 5))

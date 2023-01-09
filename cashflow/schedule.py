@@ -166,10 +166,15 @@ class Weekly(EventSchedule):
                 if period_diff == 0:
                     for day_distribution in day_schedule.iterate(week):
                         date_distribution = day_distribution.map_values(week.day)
-                        # Don't filter out occurrences that aren't in the requested date range, so that the
-                        # probabilities of the other occurrences are not affected. (Occurrences outside the range can
-                        # still occur, they just won't be observed.)
-                        date_distribution = date_distribution.drop(_excluded_occurrence_filter(self.exclude))
+                        # Adjust the cumulative probabilities here because excluded occurrences never occur.
+                        # But do not change the occurrence probabilities. If we are given a distribution where some day
+                        # has X% probability of occurring, it will always have X% probability no matter what the
+                        # excludes are.
+                        date_distribution = date_distribution.subset(
+                            _excluded_occurrence_filter(self.exclude), adjust_cumulative=True)
+                        # Occurrences outside the range still exist, they just won't be observed, so don't change the
+                        # cumulative probabilities here.
+                        date_distribution = date_distribution.subset(date_range.__contains__, adjust_cumulative=False)
                         if date_distribution.possible_in(
                                 date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                             yield date_distribution
@@ -210,12 +215,15 @@ class DayOfMonthSchedule(ABC):
 class SimpleDayOfMonthSchedule(DayOfMonthSchedule):
     """A basic schedule where each month has the same distribution of occurrences.
         However, for a given month, days in the distribution which would form invalid dates (e.g. February 30th) are
-        dropped."""
+        removed."""
 
     distributions: Sequence[DayOfMonthDistribution]
 
     def iterate(self, month: Month, /) -> Iterable[DayOfMonthDistribution]:
-        distributions = (distribution.drop(lambda d: not month.has_day(d)) for distribution in self.distributions)
+        # Adjust the cumulative probabilities here because invalid dates should never occur.
+        # (Although it probably doesn't matter because invalid dates are always at the end of the month.)
+        distributions = (
+            distribution.subset(month.has_day, adjust_cumulative=True) for distribution in self.distributions)
         return (distribution for distribution in distributions if distribution.has_possible_outcomes)
 
 
@@ -250,10 +258,15 @@ class Monthly(EventSchedule):
                 if period_diff == 0:
                     for day_distribution in day_schedule.iterate(month):
                         date_distribution = day_distribution.map_values(month.day)
-                        # Don't filter out occurrences that aren't in the requested date range, so that the
-                        # probabilities of the other occurrences are not affected. (Occurrences outside the range can
-                        # still occur, they just won't be observed.)
-                        date_distribution = date_distribution.drop(_excluded_occurrence_filter(self.exclude))
+                        # Adjust the cumulative probabilities here because excluded occurrences never occur.
+                        # But do not change the occurrence probabilities. If we are given a distribution where some day
+                        # has X% probability of occurring, it will always have X% probability no matter what the
+                        # excludes are.
+                        date_distribution = date_distribution.subset(
+                            _excluded_occurrence_filter(self.exclude), adjust_cumulative=True)
+                        # Occurrences outside the range still exist, they just won't be observed, so don't change the
+                        # cumulative probabilities here.
+                        date_distribution = date_distribution.subset(date_range.__contains__, adjust_cumulative=False)
                         if date_distribution.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
                             yield date_distribution
                 month += self.period - period_diff
@@ -283,6 +296,6 @@ def _is_occurrence_excluded(occurrence: date, excluded: Collection[date | DateRa
 
 def _excluded_occurrence_filter(exclude: Collection[date | DateRange], /) -> Callable[[date], bool]:
     def inner(occurrence: date):
-        return _is_occurrence_excluded(occurrence, exclude)
+        return not _is_occurrence_excluded(occurrence, exclude)
 
     return inner

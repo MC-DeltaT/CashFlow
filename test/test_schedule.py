@@ -1,7 +1,7 @@
 from datetime import date
 
 from cashflow.date_time import DateRange, Month, Week
-from cashflow.probability import DiscreteDistribution
+from cashflow.probability import DiscreteDistribution, DiscreteOutcome
 from cashflow.schedule import (
     Daily, DayOfMonthDistribution, DayOfWeekDistribution, Never, Once, SimpleDayOfMonthSchedule,
     SimpleDayOfWeekSchedule, Weekdays, Weekends, Weekly)
@@ -185,11 +185,14 @@ def test_simple_day_of_week_schedule() -> None:
 
 
 def test_weekly_iterate_day() -> None:
-    s = Weekly(day=4, range=DateRange.inclusive(date(2022, 12, 25), date(2023, 6, 12)), period=3,
+    s = Weekly(
+        day=4,
+        range=DateRange.inclusive(date(2022, 12, 25), date(2023, 6, 12)),
+        period=3,
         exclude=(date(2023, 2, 3), DateRange.inclusive(date(2023, 3, 1), date(2023, 4, 19)), date(2024, 3, 21)))
     actual = tuple(s.iterate(DateRange.inclusive(date(2022, 10, 4), date(2023, 5, 18))))
     expected = (
-        # 2022/12/23 is outside range
+        # 2022/12/23 outside range
         DiscreteDistribution.singular(date(2023, 1, 13)),
         # 2023/2/3  excluded
         DiscreteDistribution.singular(date(2023, 2, 24)),
@@ -200,7 +203,23 @@ def test_weekly_iterate_day() -> None:
     assert actual == expected
 
 def test_weekly_iterate_distribution() -> None:
-    ... # TODO
+    s = Weekly(
+        day=DayOfWeekDistribution.from_probabilities({1: 0.4, 3: 0.2}),
+        range=DateRange.inclusive(date(2023, 1, 5), date(2023, 3, 16)),
+        period=2,
+        exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)),
+            DateRange.half_open(date(2023, 2, 14), date(2023, 2, 14))))
+    actual = tuple(s.iterate(DateRange.inclusive(date(2009, 10, 11), date(2023, 2, 28))))
+    assert len(actual) == 4
+    # 2023/1/3 outside range
+    assert actual[0].approx_eq(DiscreteDistribution((DiscreteOutcome(date(2023, 1, 5), 0.2, 0.6),)))
+    assert actual[1].approx_eq(DiscreteDistribution((DiscreteOutcome(date(2023, 1, 17), 0.4, 0.4),)))
+    # 2023/1/19 excluded
+    # 2023/1/31 & 2023/2/2 excluded
+    assert actual[2].approx_eq(DiscreteDistribution((
+        DiscreteOutcome(date(2023, 2, 14), 0.4, 0.4), DiscreteOutcome(date(2023, 2, 16), 0.2, 0.4 + 0.2))))
+    assert actual[3].approx_eq(DiscreteDistribution((DiscreteOutcome(date(2023, 2, 28), 0.4, 0.4),)))
+    # 2023/3/2 outside range
 
 def test_weekly_iterate_schedule() -> None:
     ... # TODO

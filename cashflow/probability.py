@@ -50,19 +50,28 @@ class DiscreteOutcome(Generic[TOrdered]):
 
 @dataclass(frozen=True)
 class DiscreteDistribution(Generic[TOrdered]):
-    """A generic probability distribution of discrete outcomes.
-        The sum of probabilities of outcomes within the distribution is <= 1."""
+    """Describes the probabilities of a set of discrete outcomes.
+    
+        This class can represent an entire probability distribution (i.e. probability sums to 1) or a subset of a
+        distribution (i.e. probability sums to less than 1)."""
 
     outcomes: tuple[DiscreteOutcome[TOrdered], ...]     # Sorted in ascending order.
 
     def __init__(self, outcomes: Iterable[DiscreteOutcome[TOrdered]]) -> None:
+        """Construct the distribution from information about each outcome.
+        
+            Outcomes need not perfectly describe a complete probability distribution, but the following must be true:
+                - Outcomes must have strictly increasing values (i.e. in ascending order, no duplicates).
+                - The sum of probabilities of all outcomes must be <= 1.
+                - Cumulative probabilities must be consistent."""
+
         outcomes = tuple(outcomes)
         if not all(outcomes[i].value < outcomes[i + 1].value for i in range(len(outcomes) - 1)):
             raise ValueError('outcomes must have strictly increasing values')
         if not all(outcomes[i].cumulative_probability + outcomes[i + 1].probability
                     <= outcomes[i + 1].cumulative_probability
                    for i in range(len(outcomes) - 1)):
-            raise ValueError('outcomes must have monotonically increasing cumulative probabilities')
+            raise ValueError('Invalid cumulative probabilities')
         if sum(outcome.probability for outcome in outcomes) > 1:
             raise ValueError('Sum of probabilities of all outcomes must be in <= 1')
         super().__setattr__('outcomes', outcomes)
@@ -162,16 +171,20 @@ class DiscreteDistribution(Generic[TOrdered]):
         else:
             return None
 
-    def drop(self, func: Callable[[TOrdered], bool], /):
-        """Creates a new distribution where outcomes for which `func` returns true have 0 probability (i.e. removed).
-            The occurrence probability of each remaining outcome is unchanged, but the cumulative probabilities are
-            updated."""
+    def subset(self, func: Callable[[TOrdered], bool], /, adjust_cumulative: bool):
+        """Creates a new distribution where outcomes for which `func` returns false have 0 probability (i.e. removed).
+            
+            The occurrence probability of each remaining outcome is unchanged.
+            If `adjust_cumulative` is true, the cumulative probabilities are updated to reflect the removed outcomes."""
 
-        value_probabilities = {
-            outcome.value: outcome.probability for outcome in self.outcomes if not func(outcome.value)}
-        # Removing outcomes is guaranteed to reduce the cumulative probability to below 1, so no need to clamp.
-        # If no outcomes are removed then this operation is a no-op, so also no need to clamp.
-        return self._from_probabilities(value_probabilities, clamp_cumulative_down=False, clamp_cumulative_up=False)
+        filtered_outcomes = (outcome for outcome in self.outcomes if func(outcome.value))
+        if adjust_cumulative:
+            value_probabilities = {outcome.value: outcome.probability for outcome in filtered_outcomes}
+            # Removing outcomes is guaranteed to reduce the cumulative probability to below 1, so no need to clamp.
+            # If no outcomes are removed then this operation is a no-op, so also no need to clamp.
+            return self._from_probabilities(value_probabilities, clamp_cumulative_down=False, clamp_cumulative_up=False)
+        else:
+            return type(self)(filtered_outcomes)
 
     def map_values(self, func: Callable[[TOrdered], TOrdered2], /):
         """Creates a new distribution with outcome values mapped by `func`.
