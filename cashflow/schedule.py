@@ -229,7 +229,9 @@ class SimpleDayOfMonthSchedule(DayOfMonthSchedule):
 
 @dataclass(frozen=True, eq=False)
 class Monthly(EventSchedule):
-    """Event occurs on specified days of month every `period` number of months."""
+    """Event occurs on specified days of month every `period` number of months.
+    
+        Occurences on days that form invalid dates (e.g. February 30th) are excluded."""
 
     day: DayOfMonthNumeral | DayOfMonthSchedule
     range: DateRange = DateRange.all()
