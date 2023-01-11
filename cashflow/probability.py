@@ -51,7 +51,7 @@ class DiscreteOutcome(Generic[TOrdered]):
 @dataclass(frozen=True)
 class DiscreteDistribution(Generic[TOrdered]):
     """Describes the probabilities of a set of discrete outcomes.
-    
+
         This class can represent an entire probability distribution (i.e. probability sums to 1) or a subset of a
         distribution (i.e. probability sums to less than 1)."""
 
@@ -59,7 +59,7 @@ class DiscreteDistribution(Generic[TOrdered]):
 
     def __init__(self, outcomes: Iterable[DiscreteOutcome[TOrdered]]) -> None:
         """Construct the distribution from information about each outcome.
-        
+
             Outcomes need not perfectly describe a complete probability distribution, but the following must be true:
                 - Outcomes must have strictly increasing values (i.e. in ascending order, no duplicates).
                 - The sum of probabilities of all outcomes must be <= 1.
@@ -173,7 +173,7 @@ class DiscreteDistribution(Generic[TOrdered]):
 
     def subset(self, func: Callable[[TOrdered], bool], /, adjust_cumulative: bool):
         """Creates a new distribution where outcomes for which `func` returns false have 0 probability (i.e. removed).
-            
+
             The occurrence probability of each remaining outcome is unchanged.
             If `adjust_cumulative` is true, the cumulative probabilities are updated to reflect the removed outcomes."""
 

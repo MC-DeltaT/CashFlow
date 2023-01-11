@@ -1,5 +1,7 @@
 from datetime import date
 
+from pytest import raises
+
 from cashflow.date_time import DateRange, Month, Week
 from cashflow.probability import DiscreteOutcome
 from cashflow.schedule import (
@@ -184,6 +186,20 @@ def test_simple_day_of_week_schedule() -> None:
     assert tuple(s.iterate(Week.of(date(2099, 5, 13)))) == expected
 
 
+def test_weekly_construct_invalid_day() -> None:
+    with raises(ValueError):
+        Weekly(day=10)
+    with raises(ValueError):
+        Weekly(day=-1)
+
+def test_weekly_construct_invalid_period() -> None:
+    with raises(ValueError):
+        Weekly(day=1, period=0, range=DateRange.inclusive(date(2023, 1, 1), date(2023, 4, 1)))
+
+def test_weekly_construct_invalid_range() -> None:
+    with raises(ValueError):
+        Weekly(day=1, period=3)
+
 def test_weekly_iterate_day() -> None:
     s = Weekly(
         day=4,
@@ -268,6 +284,20 @@ def test_simple_day_of_month_schedule_invalid_dates() -> None:
     assert len(result2) == 1 and result2[0].approx_eq(DayOfMonthDistribution.from_probabilities({29: 1/3, 30: 1/3}))
 
 
+def test_monthly_construct_invalid_day() -> None:
+    with raises(ValueError):
+        Monthly(day=32)
+    with raises(ValueError):
+        Monthly(day=-1)
+
+def test_monthly_construct_invalid_period() -> None:
+    with raises(ValueError):
+        Monthly(day=1, period=0, range=DateRange.inclusive(date(2023, 1, 1), date(2023, 4, 1)))
+
+def test_monthly_construct_invalid_range() -> None:
+    with raises(ValueError):
+        Monthly(day=1, period=3)
+
 def test_monthly_iterate_day() -> None:
     s = Monthly(
         day=31,
@@ -286,14 +316,52 @@ def test_monthly_iterate_day() -> None:
         DateDistribution.singular(date(2024, 12, 31)),
         # 2025/5/31 excluded
         # 2025/10/31 excluded
-        DateDistribution.singular(date(2026, 3, 31)),
+        DateDistribution.singular(date(2026, 3, 31))
         # 2026/8/31 excluded
         # 2027/1/31 outside range
     )
     assert actual == expected
 
 def test_monthly_iterate_schedule() -> None:
-    ... # TODO
+    s = Monthly(
+        day=SimpleDayOfMonthSchedule((DayOfMonthDistribution.from_probabilities({12: 0.3, 25: 0.2, 31: 0.1}),)),
+        range=DateRange.inclusive(date(2020, 1, 19), date(2023, 11, 16)),
+        period=2,
+        exclude=(date(2023, 3, 31), DateRange.inclusive(date(2023, 5, 28), date(2023, 7, 20)), date(2023, 6, 4)))
+    actual = tuple(s.iterate(DateRange.inclusive(date(2023, 1, 13), date(2034, 6, 14))))
+
+    assert len(actual) == 6
+    # 2023/1/12 outside range
+    assert actual[0].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 1, 25), 0.2, 0.5),
+        DiscreteOutcome(date(2023, 1, 31), 0.1, 0.5 + 0.1))))
+    assert actual[1].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 3, 12), 0.3, 0.3),
+        DiscreteOutcome(date(2023, 3, 25), 0.2, 0.3 + 0.2))))
+    # 2023/3/31 excluded
+    assert actual[2].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 5, 12), 0.3, 0.3),
+        DiscreteOutcome(date(2023, 5, 25), 0.2, 0.3 + 0.2))))
+    # 2023/5/31 excluded
+    # 2023/7/12 excluded
+    assert actual[3].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 7, 25), 0.2, 0.2),
+        DiscreteOutcome(date(2023, 7, 31), 0.1, 0.2 + 0.1))))
+    assert actual[4].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 9, 12), 0.3, 0.3),
+        DiscreteOutcome(date(2023, 9, 25), 0.2, 0.3 + 0.2))))
+    assert actual[5].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 11, 12), 0.3, 0.3),)))
+    # 2023/11/25 outside range
 
 def test_monthly_iterate_leap_year() -> None:
-    ... # TODO
+    s = Monthly(
+        day=29,
+        range=DateRange.beginning_at(date(2020, 2, 1)),
+        period=12)
+    actual = tuple(s.iterate(DateRange.up_to(date(2030, 2, 1))))
+    expected = (
+        DateDistribution.singular(date(2020, 2, 29)),
+        DateDistribution.singular(date(2024, 2, 29)),
+        DateDistribution.singular(date(2028, 2, 29))
+    )
+    assert actual == expected

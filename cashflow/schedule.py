@@ -145,6 +145,8 @@ class Weekly(EventSchedule):
     exclude: Collection[date | DateRange] = ()
 
     def __post_init__(self) -> None:
+        if isinstance(self.day, int) and not 0 <= self.day <= 6:
+            raise ValueError('day must be in the range [0, 6]')
         if self.period < 1:
             raise ValueError('period must be >= 1')
         if self.period != 1 and not self.range.has_proper_lower_bound:
@@ -206,7 +208,7 @@ class DayOfMonthSchedule(ABC):
 
             Occurrences are ordered roughly in chronological order, but their distributions may overlap.
 
-            Distributions will never contain days with are invalid for the specified month (e.g. 30 for February)."""
+            Distributions will never contain days which are invalid for the specified month (e.g. 30 for February)."""
 
         raise NotImplementedError()
 
@@ -230,7 +232,7 @@ class SimpleDayOfMonthSchedule(DayOfMonthSchedule):
 @dataclass(frozen=True, eq=False)
 class Monthly(EventSchedule):
     """Event occurs on specified days of month every `period` number of months.
-    
+
         Occurences on days that form invalid dates (e.g. February 30th) are excluded."""
 
     day: DayOfMonthNumeral | DayOfMonthSchedule
@@ -239,6 +241,8 @@ class Monthly(EventSchedule):
     exclude: Collection[date | DateRange] = ()
 
     def __post_init__(self) -> None:
+        if isinstance(self.day, int) and not 1 <= self.day <= 31:
+            raise ValueError('day must be in the range [1, 31]')
         if self.period < 1:
             raise ValueError('period must be >= 1')
         if self.period != 1 and not self.range.has_proper_lower_bound:
