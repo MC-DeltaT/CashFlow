@@ -318,8 +318,8 @@ def plot_balances_over_time(endpoint_balances: Mapping[CashEndpoint, Sequence[Ca
     min_date = min(min(data[0]) for data in extracted_series.values())
     max_date = max(max(data[0]) for data in extracted_series.values())
 
-    for endpoint, balances in endpoint_balances.items():
-        plot_balances(*extract_individual_series(balances), endpoint.label)
+    for endpoint, extracted in extracted_series.items():
+        plot_balances(*extracted, endpoint.label)
 
     pyplot.title(f'Funds from {min_date} to {max_date}')
     pyplot.xlabel('Date')
