@@ -74,15 +74,21 @@ class Month:
             d = d.date()
         return d.year == self.year and d.month == self.month
 
-    def __add__(self, months: int):
+    def __add__(self, months: int) -> 'Month':
         """Adds a number of months."""
 
-        return self.of(self.day(1) + relativedelta(months=months))
+        if isinstance(months, int):
+            return self.of(self.day(1) + relativedelta(months=months))
+        else:
+            return NotImplemented
 
     def __sub__(self, other: 'Month') -> int:
         """Finds the number of months between two months."""
 
-        return (self.year - other.year) * 12 + self.month - other.month
+        if isinstance(other, Month):
+            return (self.year - other.year) * 12 + self.month - other.month
+        else:
+            return NotImplemented
 
 
 @dataclass(frozen=True, order=True)
@@ -122,15 +128,21 @@ class Week:
             d = d.date()
         return d in self.date_range
 
-    def __add__(self, weeks: int, /):
+    def __add__(self, weeks: int, /) -> 'Week':
         """Adds a number of weeks."""
 
-        return self.of(self.start + relativedelta(weeks=weeks))
+        if isinstance(weeks, int):
+            return self.of(self.start + relativedelta(weeks=weeks))
+        else:
+            return NotImplemented
 
     def __sub__(self, other: 'Week', /) -> int:
         """Finds the number of weeks between two weeks."""
 
-        return (self.start - other.start).days // 7
+        if isinstance(other, Week):
+            return (self.start - other.start).days // 7
+        else:
+            return NotImplemented
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -277,11 +289,14 @@ class DateRange:
             d = d.date()
         return self.inclusive_lower_bound <= d < self.exclusive_upper_bound
 
-    def __and__(self, other: 'DateRange', /):
+    def __and__(self, other: 'DateRange', /) -> 'DateRange':
         """Intersection of two ranges."""
 
-        lower_bound = max(self.inclusive_lower_bound, other.inclusive_lower_bound)
-        upper_bound = min(self.exclusive_upper_bound, other.exclusive_upper_bound)
-        # Clamp the lower bound so it doesn't exceed the upper bound.
-        lower_bound = min(lower_bound, upper_bound)
-        return self.half_open(lower_bound, upper_bound)
+        if isinstance(other, DateRange):
+            lower_bound = max(self.inclusive_lower_bound, other.inclusive_lower_bound)
+            upper_bound = min(self.exclusive_upper_bound, other.exclusive_upper_bound)
+            # Clamp the lower bound so it doesn't exceed the upper bound.
+            lower_bound = min(lower_bound, upper_bound)
+            return self.half_open(lower_bound, upper_bound)
+        else:
+            return NotImplemented

@@ -16,7 +16,6 @@ from .utility import merge_by_date
 
 __all__ = [
     'accumulate_endpoint_balances',
-    'CashBalance',
     'CashBalanceDelta',
     'CashBalanceUpdate',
     'CashBalanceRecord',
@@ -74,8 +73,14 @@ class CashBalanceDelta:
     max: float = 0      # Change in the maximum balance.
     mean: float = 0     # Change in the mean balance.
 
-    def __add__(self, other: 'CashBalanceDelta', /):
-        return type(self)(min=self.min + other.min, max=self.max + other.max, mean=self.mean + other.mean)
+    def __add__(self, other: 'CashBalanceDelta', /) -> 'CashBalanceDelta':
+        if isinstance(other, CashBalanceDelta):
+            return type(self)(min=self.min + other.min, max=self.max + other.max, mean=self.mean + other.mean)
+        else:
+            return NotImplemented
+    
+    def __radd__(self, other: FloatDistribution, /):
+        return type(other)(min=other.min + self.min, max=other.max + self.max, mean=other.mean + self.mean)
 
 
 @dataclass(frozen=True)
@@ -136,29 +141,15 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
     return merge_by_date(event_update_iterators)
 
 
-@dataclass(frozen=True, kw_only=True)
-class CashBalance:
-    min: float = 0
-    max: float = 0
-    mean: float = 0
-
-    @classmethod
-    def exactly(cls, amount: float, /):
-        return cls(min=amount, max=amount, mean=amount)
-
-    def __add__(self, other: CashBalanceDelta, /):
-        return type(self)(min=self.min + other.min, max=self.max + other.max, mean=self.mean + other.mean)
-
-
 @dataclass(frozen=True)
 class CashBalanceRecord:
     # The balance is taken at the start of the day given by `date` (alternatively, at the end of the previous day).
     date: date
-    amount: CashBalance
+    amount: FloatDistribution
 
 
 def accumulate_endpoint_balances(updates: Iterable[CashBalanceUpdate], /,
-        initial_balances: Mapping[CashEndpoint, CashBalance] = {}) -> dict[CashEndpoint, list[CashBalanceRecord]]:
+        initial_balances: Mapping[CashEndpoint, FloatDistribution] = {}) -> dict[CashEndpoint, list[CashBalanceRecord]]:
     """Generates cumulative balances for all endpoints resulting from a sequence of `CashBalanceUpdate`.
 
         The initial balance for an endpoint is taken from `initial_balances`, if an entry is present. Otherwise, the
@@ -166,7 +157,7 @@ def accumulate_endpoint_balances(updates: Iterable[CashBalanceUpdate], /,
 
         `updates` must be presorted in chronological order."""
 
-    endpoint_balances: defaultdict[CashEndpoint, CashBalance] = defaultdict(CashBalance)
+    endpoint_balances: defaultdict[CashEndpoint, FloatDistribution] = defaultdict(lambda: FloatDistribution.singular(0))
     endpoint_balances.update(initial_balances)
 
     result: defaultdict[CashEndpoint, list[CashBalanceRecord]] = defaultdict(list)
@@ -194,7 +185,8 @@ def simulate_cash_balances(cash_flows: Iterable[ScheduledCashFlow], date_range: 
         -> dict[CashEndpoint, list[CashBalanceRecord]]:
     """Simulates cash balances of endpoints resulting from cash flows over the specified timeframe."""
 
-    initial_balances_ = {endpoint: CashBalance.exactly(balance) for endpoint, balance in initial_balances.items()}
+    initial_balances_ = {
+        endpoint: FloatDistribution.singular(balance) for endpoint, balance in initial_balances.items()}
 
     balance_updates = merge_by_date(
         generate_balance_updates(cash_flow, date_range, certainty_tolerance=certainty_tolerance)

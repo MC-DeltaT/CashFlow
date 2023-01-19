@@ -318,22 +318,27 @@ class FloatDistribution:
     def __neg__(self):
         return type(self)(min=-self.max, max=-self.min, mean=-self.mean)
 
-    def __add__(self, other: Union[float, 'FloatDistribution'], /):
-        if isinstance(other, FloatDistribution):
+    def __add__(self, other: Union[float, 'FloatDistribution'], /) -> 'FloatDistribution':
+        if isinstance(other, (float, int)):
+            return type(self)(min=self.min + other, max=self.max + other, mean=self.mean + other)
+        elif isinstance(other, FloatDistribution):
             # Is this legit maths?
             return type(self)(min=self.min + other.min, max=self.max + other.max, mean=self.mean + other.mean)
         else:
-            return type(self)(min=self.min + other, max=self.max + other, mean=self.mean + other)
+            return NotImplemented
 
     def __radd__(self, other: Union[float, 'FloatDistribution'], /):
         return self + other
 
-    def __mul__(self, other: float, /):
-        if other >= 0:
-            return type(self)(min=self.min * other, max=self.max * other, mean=self.mean * other)
+    def __mul__(self, other: float, /) -> 'FloatDistribution':
+        if isinstance(other, (float, int)):
+            if other >= 0:
+                return type(self)(min=self.min * other, max=self.max * other, mean=self.mean * other)
+            else:
+                # If multiplier is negative, need to swap min and max.
+                return type(self)(min=self.max * other, max=self.min * other, mean=self.mean * other)
         else:
-            # If multiplier is negative, need to swap min and max.
-            return type(self)(min=self.max * other, max=self.min * other, mean=self.mean * other)
+            return NotImplemented
 
     def __rmul__(self, other: float, /):
         return self * other
