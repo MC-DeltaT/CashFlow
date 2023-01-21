@@ -2,8 +2,12 @@ from datetime import date
 
 from pytest import approx, raises
 
-from cashflow.cash_flow import CashBalanceDelta, CashBalanceUpdate, CashEndpoint, accumulate_endpoint_balances
+from cashflow.cash_flow import (
+    CashBalanceDelta, CashBalanceUpdate, CashEndpoint, CashSink, CashSource, ScheduledCashFlow,
+    accumulate_endpoint_balances, summarise_total_cash_flow)
+from cashflow.date_time import DateRange
 from cashflow.probability import FloatDistribution
+from cashflow.schedule import DateDistribution, DayOfMonthDistribution, Monthly, Once, SimpleDayOfMonthSchedule
 
 
 def test_cash_balance_delta_add() -> None:
@@ -66,6 +70,74 @@ def test_accumulate_endpoint_balances() -> None:
     assert endpoint2_result[0].amount.approx_eq(FloatDistribution(min=78, max=89, mean=79.6))
     assert endpoint2_result[1].date == date(2023, 1, 23)
     assert endpoint2_result[1].amount.approx_eq(FloatDistribution(min=78, max=87.7, mean=79.6))
+
+
+def test_summarise_total_cash_flow_empty_range() -> None:
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution.singular(10),
+        Once(date(2023, 1, 1)))
+    result = summarise_total_cash_flow(
+        cash_flow,
+        DateRange.half_open(date.min, date.min))
+    assert result == FloatDistribution(min=0, max=0, mean=0)
+
+def test_summarise_cash_flow_no_occurrences() -> None:
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution.singular(10),
+        Once(date(2023, 1, 1)))
+    result = summarise_total_cash_flow(
+        cash_flow,
+        DateRange.half_open(date(2000, 1, 1), date(2023, 1, 1)))
+    assert result == FloatDistribution(min=0, max=0, mean=0)
+
+def test_summarise_cash_flow_certain_occurrence() -> None:
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution(min=10, max=34, mean=24.9),
+        Once(date(2023, 1, 1)))
+    result = summarise_total_cash_flow(
+        cash_flow,
+        DateRange.half_open(date(2022, 1, 1), date(2024, 1, 1)))
+    assert result.approx_eq(FloatDistribution(min=10, max=34, mean=24.9))
+
+def test_summarise_cash_flow_uncertain_occurrence() -> None:
+    schedule = Once(DateDistribution.from_probabilities({
+        date(2023, 1, 1): 0.2,
+        date(2023, 1, 2): 0.1,
+        date(2023, 1, 3): 0.1,
+        date(2023, 1, 4): 0.1,
+        date(2023, 1, 5): 0.1,
+        date(2023, 1, 6): 0.1,
+        date(2023, 1, 7): 0.1,
+        date(2023, 1, 8): 0.1,
+        date(2023, 1, 9): 0.05,
+        date(2023, 1, 10): 0.05
+    }))
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution(min=10, max=100, mean=20),
+        schedule)
+    result = summarise_total_cash_flow(
+        cash_flow,
+        DateRange.inclusive(date(2023, 1, 6), date(2023, 2, 1)))
+    assert result.approx_eq(FloatDistribution(min=0, max=100, mean=8))
+
+
+def test_summarise_cash_flow_multiple_events() -> None:
+    schedule = Monthly(SimpleDayOfMonthSchedule((
+        DayOfMonthDistribution(),
+        DayOfMonthDistribution()
+    )))
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution(min=10, max=100, mean=20),
+        schedule)
+    result = summarise_total_cash_flow(
+        cash_flow,
+        DateRange.inclusive(date(...), date(...)))
+    assert result.approx_eq(FloatDistribution(min=..., max=..., mean=...))
 
 
 # TODO
