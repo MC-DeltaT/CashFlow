@@ -141,11 +141,8 @@ class DiscreteDistribution(Generic[TOrdered]):
         """Checks if the distribution is guaranteed to take on a value within the interval
             [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
 
-        # The max probability is 1, so if the event is certain within the interval, then the interval must span the
-        # entire distribution and the sum of all probabilities must be 1.
-        return (len(self.outcomes) > 0
-            and self.outcomes[0].value >= inclusive_lower_bound and self.outcomes[-1].value < exclusive_upper_bound
-            and effectively_certain(self.outcomes[-1].cumulative_probability, tolerance=tolerance))
+        probability = self.probability_in(inclusive_lower_bound, exclusive_upper_bound)
+        return effectively_certain(probability, tolerance=tolerance)
 
     @property
     def has_possible_outcomes(self) -> bool:

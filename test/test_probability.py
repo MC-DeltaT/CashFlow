@@ -169,6 +169,17 @@ def test_discrete_distribution_certain_in_sum_not_1() -> None:
     assert not d.certain_in(1, 6)
     assert not d.certain_in(10, 23)
 
+def test_discrete_distribution_certain_in_cumulative_1() -> None:
+    d = DiscreteDistribution((
+        DiscreteOutcome(1, 0.3, 0.3),
+        DiscreteOutcome(2, 0.15, 0.45),
+        DiscreteOutcome(3, 0.04, 1.0)
+    ))
+    assert not d.certain_in(0, 4)
+    assert not d.certain_in(1, 8)
+    assert not d.certain_in(3, 4)
+    assert not d.certain_in(10, 20)
+
 def test_discrete_distribution_has_possible_outcomes_true() -> None:
     d = DiscreteDistribution.singular(4)
     assert d.has_possible_outcomes

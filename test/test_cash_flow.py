@@ -124,11 +124,10 @@ def test_summarise_cash_flow_uncertain_occurrence() -> None:
         DateRange.inclusive(date(2023, 1, 6), date(2023, 2, 1)))
     assert result.approx_eq(FloatDistribution(min=0, max=100, mean=8))
 
-
 def test_summarise_cash_flow_multiple_events() -> None:
     schedule = Monthly(SimpleDayOfMonthSchedule((
-        DayOfMonthDistribution(),
-        DayOfMonthDistribution()
+        DayOfMonthDistribution.from_probabilities({1: 0.3, 14: 0.1, 23: 0.6}),
+        DayOfMonthDistribution.from_probabilities({3: 0.1, 4: 0.1, 5: 0.1})
     )))
     cash_flow = ScheduledCashFlow(
         'test', CashSource('test source'), CashSink('test sink'),
@@ -136,8 +135,28 @@ def test_summarise_cash_flow_multiple_events() -> None:
         schedule)
     result = summarise_total_cash_flow(
         cash_flow,
-        DateRange.inclusive(date(...), date(...)))
-    assert result.approx_eq(FloatDistribution(min=..., max=..., mean=...))
+        DateRange.inclusive(date(2023, 1, 20), date(2023, 3, 4)))
+    # 2023/1: event1 P=0.6, event2 P=0
+    # 2023/2: event1 P=1, event2 P=0.3
+    # 2023/3: event1 P=0.3, event2 P=0.2
+    assert result.approx_eq(FloatDistribution(min=10, max=500, mean=48))
+
+def test_summarise_cash_flow_sanity_check() -> None:
+    cash_flow1 = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution(min=10, max=100, mean=20),
+        Monthly(15, period=1))
+    cash_flow2 = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution(min=30, max=300, mean=60),
+        Monthly(15, period=3, range=DateRange.beginning_at(date(2023, 1, 1))))
+    result1 = summarise_total_cash_flow(
+        cash_flow1,
+        DateRange.inclusive(date(2023, 1, 1), date(2025, 1, 1)))
+    result2 = summarise_total_cash_flow(
+        cash_flow2,
+        DateRange.inclusive(date(2023, 1, 1), date(2025, 1, 1)))
+    assert result1.approx_eq(result2)
 
 
 # TODO
