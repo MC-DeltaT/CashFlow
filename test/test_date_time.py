@@ -206,6 +206,13 @@ def test_date_range_all() -> None:
     assert not d.has_proper_lower_bound
     assert not d.has_proper_upper_bound
 
+def test_date_range_empty() -> None:
+    d = DateRange.empty()
+    assert d.is_empty
+    # These should probably be true, else things may break.
+    assert d.has_proper_lower_bound
+    assert d.has_proper_upper_bound
+
 def test_date_range_days_valid() -> None:
     d = DateRange.inclusive(date(1999, 11, 14), date(2000, 1, 3))
     assert d.days == 17 + 31 + 3

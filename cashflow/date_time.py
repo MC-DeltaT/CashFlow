@@ -211,6 +211,14 @@ class DateRange:
 
         return cls.half_open(date.min, date.max)
 
+    @classmethod
+    def empty(cls, at: date = date(1900, 1, 1)):
+        """Creates a range containing no dates.
+        
+            :param at: The upper and lower bound for the range."""
+        
+        return cls.half_open(at, at)
+
     @property
     def has_proper_lower_bound(self) -> bool:
         """Checks if the range has a lower bound that is not `date.min`."""

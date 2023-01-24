@@ -3,11 +3,20 @@ from datetime import date
 from pytest import approx, raises
 
 from cashflow.cash_flow import (
-    CashBalanceDelta, CashBalanceUpdate, CashEndpoint, CashSink, CashSource, ScheduledCashFlow,
-    accumulate_endpoint_balances, summarise_total_cash_flow)
+    CashBalanceDelta, CashBalanceUpdate, CashEndpoint, CashFlowLog, CashSink, CashSource, ScheduledCashFlow,
+    accumulate_endpoint_balances, generate_cash_flow_logs, summarise_total_cash_flow)
 from cashflow.date_time import DateRange
 from cashflow.probability import FloatDistribution
 from cashflow.schedule import DateDistribution, DayOfMonthDistribution, Monthly, Once, SimpleDayOfMonthSchedule
+
+
+def test_scheduled_cash_flow_construct_invalid() -> None:
+    with raises(ValueError):
+        ScheduledCashFlow(
+            'foo',
+            CashSource('source'), CashSink('sink'),
+            FloatDistribution(min=-0.1, mean=1, max=2),
+            Once(date(2023, 1, 1)))
 
 
 def test_cash_balance_delta_add() -> None:
@@ -21,6 +30,9 @@ def test_cash_balance_delta_radd() -> None:
     assert result.min == approx(1.7)
     assert result.max == approx(115.94)
     assert result.mean == approx(15.24)
+
+
+# TODO: test generate_balance_updates()
 
 
 def test_accumulate_endpoint_balances_no_updates() -> None:
@@ -72,14 +84,15 @@ def test_accumulate_endpoint_balances() -> None:
     assert endpoint2_result[1].amount.approx_eq(FloatDistribution(min=78, max=87.7, mean=79.6))
 
 
+# TODO: test simulate_cash_balances()
+
+
 def test_summarise_total_cash_flow_empty_range() -> None:
     cash_flow = ScheduledCashFlow(
         'test', CashSource('test source'), CashSink('test sink'),
         FloatDistribution.singular(10),
         Once(date(2023, 1, 1)))
-    result = summarise_total_cash_flow(
-        cash_flow,
-        DateRange.half_open(date.min, date.min))
+    result = summarise_total_cash_flow(cash_flow, DateRange.empty())
     assert result == FloatDistribution(min=0, max=0, mean=0)
 
 def test_summarise_cash_flow_no_occurrences() -> None:
@@ -159,4 +172,76 @@ def test_summarise_cash_flow_sanity_check() -> None:
     assert result1.approx_eq(result2)
 
 
-# TODO
+def test_cash_flow_log_lt() -> None:
+    assert (CashFlowLog(date(2023, 1, 1), -1, None, None, None)
+          < CashFlowLog(date(2024, 2, 2), -1, None, None, None))
+    assert (CashFlowLog(date(2023, 1, 1), 0, None, None, None)
+          < CashFlowLog(date(2024, 2, 2), 0, None, None, None))
+    assert (CashFlowLog(date(2023, 1, 1), 1, None, None, None)
+          < CashFlowLog(date(2024, 2, 2), 1, None, None, None))
+    assert (CashFlowLog(date(2023, 1, 1), -1, None, None, None)
+          < CashFlowLog(date(2023, 1, 1), 0, None, None, None))
+    assert (CashFlowLog(date(2023, 1, 1), -1, None, None, None)
+          < CashFlowLog(date(2023, 1, 1), 1, None, None, None))
+    assert (CashFlowLog(date(2023, 1, 1), 0, None, None, None)
+          < CashFlowLog(date(2023, 1, 1), 1, None, None, None))
+    
+    assert not (CashFlowLog(date(2023, 2, 2), -1, None, None, None)
+              < CashFlowLog(date(2022, 1, 1), -1, None, None, None))
+    assert not (CashFlowLog(date(2023, 2, 2), 0, None, None, None)
+              < CashFlowLog(date(2022, 1, 1), 0, None, None, None))
+    assert not (CashFlowLog(date(2023, 2, 2), 1, None, None, None)
+              < CashFlowLog(date(2022, 1, 1), 1, None, None, None))
+    assert not (CashFlowLog(date(2023, 2, 2), 0, None, None, None)
+              < CashFlowLog(date(2023, 1, 1), -1, None, None, None))
+    assert not (CashFlowLog(date(2023, 1, 1), 1, None, None, None)
+              < CashFlowLog(date(2023, 1, 1), -1, None, None, None))
+    assert not (CashFlowLog(date(2023, 1, 1), 1, None, None, None)
+              < CashFlowLog(date(2023, 1, 1), 0, None, None, None))
+    
+    assert not (CashFlowLog(date(2023, 1, 1), -1, None, None, None)
+              < CashFlowLog(date(2023, 1, 1), -1, None, None, None))
+    assert not (CashFlowLog(date(2023, 1, 1), 0, None, None, None)
+              < CashFlowLog(date(2023, 1, 1), 0, None, None, None))
+    assert not (CashFlowLog(date(2023, 1, 1), 1, None, None, None)
+              < CashFlowLog(date(2023, 1, 1), 1, None, None, None))
+
+def test_cash_flow_log_str_lower_bound() -> None:
+    c = CashFlowLog(
+        date(2023, 1, 26), -1,
+        FloatDistribution(min=1.234, mean=2.345, max=3.456),
+        CashEndpoint('test endpoint1'), CashEndpoint('test endpoint2'))
+    assert str(c) == '2023-01-26 v | $[1.23, (2.35), 3.46] from "test endpoint1" to "test endpoint2"'
+
+def test_cash_flow_log_str_upper_bound() -> None:
+    c = CashFlowLog(
+        date(2023, 1, 26), 1,
+        FloatDistribution(min=1.234, mean=2.345, max=3.456),
+        CashEndpoint('test endpoint1'), CashEndpoint('test endpoint2'))
+    assert str(c) == '2023-01-26 ^ | $[1.23, (2.35), 3.46] from "test endpoint1" to "test endpoint2"'
+
+def test_cash_flow_log_str_both_bounds() -> None:
+    c = CashFlowLog(
+        date(2023, 1, 26), 0,
+        FloatDistribution(min=1.234, mean=2.345, max=3.456),
+        CashEndpoint('test endpoint1'), CashEndpoint('test endpoint2'))
+    assert str(c) == '2023-01-26 - | $[1.23, (2.35), 3.46] from "test endpoint1" to "test endpoint2"'
+
+
+def test_generate_cash_flow_logs_empty_range() -> None:
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution.singular(10),
+        Once(date(2023, 1, 1)))
+    result = tuple(generate_cash_flow_logs(cash_flow, DateRange.empty()))
+    assert result == ()
+
+def test_generate_cash_flow_logs_no_events() -> None:
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution.singular(10),
+        Once(date(2023, 1, 1)))
+    result = tuple(generate_cash_flow_logs(cash_flow, DateRange.inclusive(date(2020, 1, 1), date(2022, 1, 1))))
+    assert result == ()
+
+# TODO: test generate_cash_flow_logs()

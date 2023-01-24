@@ -47,10 +47,11 @@ class ExpenseSink(CashSink):
 class ScheduleBuilder:
     """Helper for defining scheduled cash flows."""
 
-    """
-        :param general_account: The default account for incomes and expenses.
-    """
     def __init__(self, general_account: Account | None = None) -> None:
+        """
+            :param general_account: The default account for incomes and expenses.
+        """
+
         self.general_account = general_account
         self.scheduled_cash_flows: list[ScheduledCashFlow] = []
 

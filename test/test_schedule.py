@@ -10,11 +10,11 @@ from cashflow.schedule import (
 
 
 def test_never_iterate_empty_range() -> None:
-    events = tuple(Never().iterate(DateRange.half_open(date(2022, 12, 24), date(2022, 12, 24))))
+    events = tuple(Never().iterate(DateRange.empty()))
     assert events == ()
 
 def test_never_iterate_nonempty_range() -> None:
-    events = tuple(Never().iterate(DateRange.half_open(date(2022, 12, 24), date(2023, 12, 24))))
+    events = tuple(Never().iterate(DateRange.inclusive(date(2022, 12, 24), date(2023, 12, 24))))
     assert events == ()
 
 def test_never_iterate_all() -> None:
@@ -223,8 +223,7 @@ def test_weekly_iterate_distribution() -> None:
         day=DayOfWeekDistribution.from_probabilities({1: 0.4, 3: 0.2}),
         range=DateRange.inclusive(date(2023, 1, 5), date(2023, 3, 16)),
         period=2,
-        exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)),
-            DateRange.half_open(date(2023, 2, 14), date(2023, 2, 14))))
+        exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)), DateRange.empty()))
     actual = tuple(s.iterate(DateRange.inclusive(date(2009, 10, 11), date(2023, 2, 28))))
     assert len(actual) == 4
     # 2023/1/3 outside range
@@ -242,8 +241,7 @@ def test_weekly_iterate_schedule() -> None:
         day=SimpleDayOfWeekSchedule((DayOfWeekDistribution.from_probabilities({1: 0.4, 3: 0.2}),)),
         range=DateRange.inclusive(date(2023, 1, 5), date(2023, 3, 16)),
         period=2,
-        exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)),
-            DateRange.half_open(date(2023, 2, 14), date(2023, 2, 14))))
+        exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)), DateRange.empty()))
     actual = tuple(s.iterate(DateRange.inclusive(date(2009, 10, 11), date(2023, 2, 28))))
     assert len(actual) == 4
     # 2023/1/3 outside range
