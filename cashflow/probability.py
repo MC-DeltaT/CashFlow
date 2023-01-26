@@ -39,13 +39,10 @@ def effectively_certain(probability: float, /, *, tolerance: float = DEFAULT_CER
 class DiscreteOutcome(Generic[TOrdered]):
     value: TOrdered
     probability: float      # The unconditional probability that the outcome is equal to `value`.
-    cumulative_probability: float   # The probability that the outcome is less than or equal to `value`.
 
     def __post_init__(self) -> None:
         if not 0 < self.probability <= 1:
             raise ValueError('probability must be in the range (0, 1]')
-        elif not self.probability <= self.cumulative_probability <= 1:
-            raise ValueError('cumulative_probability must be in the range [probability, 1]')
 
 
 @dataclass(frozen=True)
@@ -62,16 +59,11 @@ class DiscreteDistribution(Generic[TOrdered]):
 
             Outcomes need not perfectly describe a complete probability distribution, but the following must be true:
                 - Outcomes must have strictly increasing values (i.e. in ascending order, no duplicates).
-                - The sum of probabilities of all outcomes must be <= 1.
-                - Cumulative probabilities must be consistent."""
+                - The sum of probabilities of all outcomes must be <= 1."""
 
         outcomes = tuple(outcomes)
         if not all(outcomes[i].value < outcomes[i + 1].value for i in range(len(outcomes) - 1)):
             raise ValueError('outcomes must have strictly increasing values')
-        if not all(outcomes[i].cumulative_probability + outcomes[i + 1].probability
-                    <= outcomes[i + 1].cumulative_probability
-                   for i in range(len(outcomes) - 1)):
-            raise ValueError('Invalid cumulative probabilities')
         if sum(outcome.probability for outcome in outcomes) > 1:
             raise ValueError('Sum of probabilities of all outcomes must be in <= 1')
         super().__setattr__('outcomes', outcomes)
@@ -113,16 +105,13 @@ class DiscreteDistribution(Generic[TOrdered]):
 
     @classmethod
     def null(cls):
-        """Creates a distribution where all outcomes have zero probability."""
+        """Creates a distribution with no possible outcomes."""
 
         return cls(())
 
-    def iterate(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) \
-            -> Iterable[DiscreteOutcome[TOrdered]]:
-        """Iterates outcomes within the interval [`inclusive_lower_bound`, `exclusive_upper_bound`) that have nonzero
-            probability, in ascending order."""
-
-        return (outcome for outcome in self.outcomes if inclusive_lower_bound <= outcome.value < exclusive_upper_bound)
+    @property
+    def has_possible_outcomes(self) -> bool:
+        return len(self.outcomes) > 0
 
     def probability_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> float:
         """Returns the sum of probability of all outcomes in the interval
@@ -130,23 +119,12 @@ class DiscreteDistribution(Generic[TOrdered]):
 
         return sum(outcome.probability for outcome in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
 
-    def possible_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> bool:
-        """Checks if there are any outcomes with nonzero probability within the interval
-            [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
+    def cumulate_probability(self, value: TOrdered, /) -> float:
+        """Computes the total probability of outcomes with value <= `value`."""
 
-        return any(True for _ in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
-
-    def certain_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered,
-            tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> bool:
-        """Checks if the distribution is guaranteed to take on a value within the interval
-            [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
-
-        probability = self.probability_in(inclusive_lower_bound, exclusive_upper_bound)
-        return effectively_certain(probability, tolerance=tolerance)
-
-    @property
-    def has_possible_outcomes(self) -> bool:
-        return len(self.outcomes) > 0
+        cumulative = sum(outcome.probability for outcome in self.outcomes if outcome.value <= value)
+        # Sum may exceed 1 slightly due to floating point error.
+        return min(cumulative, 1)
 
     def lower_bound_inclusive(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
         """Returns the outcome with the lowest value >= `value`and nonzero probability, or `None` if there is no such
@@ -168,20 +146,20 @@ class DiscreteDistribution(Generic[TOrdered]):
         else:
             return None
 
-    def subset(self, func: Callable[[TOrdered], bool], /, adjust_cumulative: bool):
+    def iterate(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) \
+            -> Iterable[DiscreteOutcome[TOrdered]]:
+        """Iterates outcomes within the interval [`inclusive_lower_bound`, `exclusive_upper_bound`) that have nonzero
+            probability, in ascending order."""
+
+        return (outcome for outcome in self.outcomes if inclusive_lower_bound <= outcome.value < exclusive_upper_bound)
+
+    def subset(self, func: Callable[[TOrdered], bool], /):
         """Creates a new distribution where outcomes for which `func` returns false have 0 probability (i.e. removed).
 
-            The occurrence probability of each remaining outcome is unchanged.
-            If `adjust_cumulative` is true, the cumulative probabilities are updated to reflect the removed outcomes."""
+            The occurrence probability of each remaining outcome is unchanged."""
 
         filtered_outcomes = (outcome for outcome in self.outcomes if func(outcome.value))
-        if adjust_cumulative:
-            value_probabilities = {outcome.value: outcome.probability for outcome in filtered_outcomes}
-            # Removing outcomes is guaranteed to reduce the cumulative probability to below 1, so no need to clamp.
-            # If no outcomes are removed then this operation is a no-op, so also no need to clamp.
-            return self._from_probabilities(value_probabilities, clamp_cumulative_down=False, clamp_cumulative_up=False)
-        else:
-            return type(self)(filtered_outcomes)
+        return type(self)(filtered_outcomes)
 
     def map_values(self, func: Callable[[TOrdered], TOrdered2], /):
         """Creates a new distribution with outcome values mapped by `func`.
@@ -204,23 +182,12 @@ class DiscreteDistribution(Generic[TOrdered]):
             # The outcome values must be exactly equal, because the distribution is designed to be discrete - we don't
             # care for floating point values.
             return (outcome1.value == outcome2.value
-                and isclose(outcome1.probability, outcome2.probability, rel_tol=rel_tol, abs_tol=abs_tol)
-                and isclose(outcome1.cumulative_probability, outcome2.cumulative_probability,
-                    rel_tol=rel_tol, abs_tol=abs_tol))
+                and isclose(outcome1.probability, outcome2.probability, rel_tol=rel_tol, abs_tol=abs_tol))
 
         if len(self.outcomes) != len(other.outcomes):
             return False
         else:
             return all(outcome_approx_eq(o1, o2) for o1, o2 in zip(self.outcomes, other.outcomes))
-
-    def _find_outcome(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
-        """Returns the outcome with the given value and nonzero probability, or `None` if there is no such outcome."""
-
-        idx = bisect_left(self.outcomes, value, key=lambda outcome: outcome.value)
-        if idx < len(self.outcomes) and self.outcomes[idx].value == value:
-            return self.outcomes[idx]
-        else:
-            return None
 
     _CUMULATIVE_PROBABILITY_CLAMP = 1e-9
     """If the difference between a cumulative probability and 1 is less than this value, then the probability may be
@@ -249,16 +216,15 @@ class DiscreteDistribution(Generic[TOrdered]):
                 else:
                     # Otherwise we assume the caller has provided invalid probabilities (e.g. total >> 1).
                     raise ValueError('Sum of probabilities must not exceed 1')
-            outcomes.append(DiscreteOutcome(value, probability, new_cumulative_probability))
+            outcomes.append(DiscreteOutcome(value, probability))
             cumulative_probability = new_cumulative_probability
         # Due to floating point inaccuracy, the final cumulative probability may be slightly less than 1 even if it
         # should add up to 1, which we can correct for.
         if clamp_cumulative_up and outcomes:
-            diff = 1 - outcomes[-1].cumulative_probability
+            diff = 1 - cumulative_probability
             if 0 < diff < clamp_cumulative_up:
                 # Also need to increase the last outcome's probability to have a consistent distribution.
-                outcomes[-1] = replace(outcomes[-1],
-                    probability=outcomes[-1].probability + diff, cumulative_probability=1)
+                outcomes[-1] = replace(outcomes[-1], probability=outcomes[-1].probability + diff)
         return cls(outcomes)
 
 

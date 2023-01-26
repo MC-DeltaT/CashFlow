@@ -226,15 +226,17 @@ def test_weekly_iterate_distribution() -> None:
         exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)), DateRange.empty()))
     actual = tuple(s.iterate(DateRange.inclusive(date(2009, 10, 11), date(2023, 2, 28))))
     assert len(actual) == 4
-    # 2023/1/3 outside range
-    assert actual[0].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 1, 5), 0.2, 0.6),)))
-    assert actual[1].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 1, 17), 0.4, 0.4),)))
+    assert actual[0].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 1, 3), 0.4),         # Outside range but still included in distribution.
+        DiscreteOutcome(date(2023, 1, 5), 0.2))))
+    assert actual[1].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 1, 17), 0.4),)))
     # 2023/1/19 excluded
     # 2023/1/31 & 2023/2/2 excluded
     assert actual[2].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 2, 14), 0.4, 0.4), DiscreteOutcome(date(2023, 2, 16), 0.2, 0.4 + 0.2))))
-    assert actual[3].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 2, 28), 0.4, 0.4),)))
-    # 2023/3/2 outside range
+        DiscreteOutcome(date(2023, 2, 14), 0.4), DiscreteOutcome(date(2023, 2, 16), 0.2))))
+    assert actual[3].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 2, 28), 0.4),
+        DiscreteOutcome(date(2023, 3, 2), 0.2))))       # Outside range but still included in distribution.
 
 def test_weekly_iterate_schedule() -> None:
     s = Weekly(
@@ -244,15 +246,17 @@ def test_weekly_iterate_schedule() -> None:
         exclude=(date(2023, 1, 19), DateRange.inclusive(date(2023, 1, 23), date(2023, 2, 5)), DateRange.empty()))
     actual = tuple(s.iterate(DateRange.inclusive(date(2009, 10, 11), date(2023, 2, 28))))
     assert len(actual) == 4
-    # 2023/1/3 outside range
-    assert actual[0].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 1, 5), 0.2, 0.6),)))
-    assert actual[1].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 1, 17), 0.4, 0.4),)))
+    assert actual[0].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 1, 3), 0.4),         # Outside range but still included in distribution.
+        DiscreteOutcome(date(2023, 1, 5), 0.2))))
+    assert actual[1].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 1, 17), 0.4),)))
     # 2023/1/19 excluded
     # 2023/1/31 & 2023/2/2 excluded
     assert actual[2].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 2, 14), 0.4, 0.4), DiscreteOutcome(date(2023, 2, 16), 0.2, 0.4 + 0.2))))
-    assert actual[3].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 2, 28), 0.4, 0.4),)))
-    # 2023/3/2 outside range
+        DiscreteOutcome(date(2023, 2, 14), 0.4), DiscreteOutcome(date(2023, 2, 16), 0.2))))
+    assert actual[3].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 2, 28), 0.4),
+        DiscreteOutcome(date(2023, 3, 2), 0.2))))       # Outside range but still included in distribution.
 
 
 def test_simple_day_of_month_schedule_normal() -> None:
@@ -329,27 +333,30 @@ def test_monthly_iterate_schedule() -> None:
     actual = tuple(s.iterate(DateRange.inclusive(date(2023, 1, 13), date(2034, 6, 14))))
 
     assert len(actual) == 6
-    # 2023/1/12 outside range
     assert actual[0].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 1, 25), 0.2, 0.5),
-        DiscreteOutcome(date(2023, 1, 31), 0.1, 0.5 + 0.1))))
+        DiscreteOutcome(date(2023, 1, 12), 0.3),        # Outside range but still included in distribution.
+        DiscreteOutcome(date(2023, 1, 25), 0.2),
+        DiscreteOutcome(date(2023, 1, 31), 0.1))))
     assert actual[1].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 3, 12), 0.3, 0.3),
-        DiscreteOutcome(date(2023, 3, 25), 0.2, 0.3 + 0.2))))
+        DiscreteOutcome(date(2023, 3, 12), 0.3),
+        DiscreteOutcome(date(2023, 3, 25), 0.2))))
     # 2023/3/31 excluded
     assert actual[2].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 5, 12), 0.3, 0.3),
-        DiscreteOutcome(date(2023, 5, 25), 0.2, 0.3 + 0.2))))
+        DiscreteOutcome(date(2023, 5, 12), 0.3),
+        DiscreteOutcome(date(2023, 5, 25), 0.2))))
     # 2023/5/31 excluded
     # 2023/7/12 excluded
     assert actual[3].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 7, 25), 0.2, 0.2),
-        DiscreteOutcome(date(2023, 7, 31), 0.1, 0.2 + 0.1))))
+        DiscreteOutcome(date(2023, 7, 25), 0.2),
+        DiscreteOutcome(date(2023, 7, 31), 0.1))))
     assert actual[4].approx_eq(DateDistribution((
-        DiscreteOutcome(date(2023, 9, 12), 0.3, 0.3),
-        DiscreteOutcome(date(2023, 9, 25), 0.2, 0.3 + 0.2))))
-    assert actual[5].approx_eq(DateDistribution((DiscreteOutcome(date(2023, 11, 12), 0.3, 0.3),)))
-    # 2023/11/25 outside range
+        DiscreteOutcome(date(2023, 9, 12), 0.3),
+        DiscreteOutcome(date(2023, 9, 25), 0.2))))
+    # 2023/9/31 invalid
+    assert actual[5].approx_eq(DateDistribution((
+        DiscreteOutcome(date(2023, 11, 12), 0.3),
+        DiscreteOutcome(date(2023, 11, 25), 0.2))))     # Outside range but still included in distribution.
+    # 2023/11/31 invalid
 
 def test_monthly_iterate_leap_year() -> None:
     s = Monthly(

@@ -78,7 +78,7 @@ class CashBalanceDelta:
             return type(self)(min=self.min + other.min, max=self.max + other.max, mean=self.mean + other.mean)
         else:
             return NotImplemented
-    
+
     def __radd__(self, other: FloatDistribution, /):
         return type(other)(min=other.min + self.min, max=other.max + self.max, mean=other.mean + self.mean)
 
@@ -115,7 +115,7 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
         yield CashBalanceUpdate(first_occurrence.value, source, CashBalanceDelta(min=-amount.max), cash_flow)
         yield CashBalanceUpdate(first_occurrence.value, sink, CashBalanceDelta(max=amount.max), cash_flow)
 
-        assert event.possible_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound)
+        assert event.probability_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound) > 0
         for occurrence in event.iterate(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
             # Mean increases linearly up to the end of the day of occurrence (i.e. the following day).
             # Since this event occurs on the following day, we have to defer yielding until later to preserve
@@ -128,7 +128,8 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
 
         last_occurrence = event.upper_bound_inclusive(date_range.inclusive_upper_bound)
         assert last_occurrence is not None
-        has_upper_bound = effectively_certain(last_occurrence.cumulative_probability, tolerance=certainty_tolerance)
+        has_upper_bound = effectively_certain(event.cumulate_probability(date_range.inclusive_upper_bound),
+            tolerance=certainty_tolerance)
         if has_upper_bound:
             # Date upper bound - event must have occurred by now.
             # Upper bound is at the end of the day of occurrence (i.e. the following day).
@@ -217,7 +218,7 @@ def summarise_total_cash_flow(cash_flow: ScheduledCashFlow, date_range: DateRang
 
     # Minimum cash total happens when only the events which are certain to occur in the timeframe do occur.
     certain_events = sum(1 for event in events
-        if event.certain_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound,
+        if effectively_certain(event.probability_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound),
             tolerance=certainty_tolerance))
     min_amount = cash_flow.amount.min * certain_events
 
@@ -239,6 +240,7 @@ class CashFlowLog:
 
     date: date
     bound_type: int     # < 0 is lower bound, > 0 is upper bound, 0 is both lower and upper bounds.
+    exact_bound: bool   # If true, event is certain to occur within the bound.
     amount: FloatDistribution
     source: CashEndpoint
     sink: CashEndpoint
@@ -252,29 +254,46 @@ class CashFlowLog:
     @property
     def _bound_marker(self) -> str:
         if self.bound_type < 0:
-            return 'v'
+            if self.exact_bound:
+                return 'vv'
+            else:
+                return '~v'
         elif self.bound_type > 0:
-            return '^'
+            if self.exact_bound:
+                return '^^'
+            else:
+                return '~^'
         else:
-            return '-'
+            if self.exact_bound:
+                return '=='
+            else:
+                return '~~'
 
 
 def generate_cash_flow_logs(cash_flow: ScheduledCashFlow, date_range: DateRange, /,
         certainty_tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> Iterable[CashFlowLog]:
-    """Generates a human-readable description for each cash flow event within the given timeframe."""
+    """Generates a human-readable description for each cash flow event within the given timeframe.
+
+        Logs are sorted by date."""
 
     def generate_event_logs(event: DateDistribution, /) -> Iterable[CashFlowLog]:
         first_occurrence = event.lower_bound_inclusive(date_range.inclusive_lower_bound)
         assert first_occurrence is not None
         last_occurrence = event.upper_bound_inclusive(date_range.inclusive_upper_bound)
         assert last_occurrence is not None
-        has_upper_bound = effectively_certain(last_occurrence.cumulative_probability, tolerance=certainty_tolerance)
 
-        if not has_upper_bound or first_occurrence.value == last_occurrence.value:
-            yield CashFlowLog(first_occurrence.value, 0, cash_flow.amount, cash_flow.source, cash_flow.sink)
+        exact_lower_bound = first_occurrence == event.outcomes[0]
+        exact_upper_bound = (last_occurrence == event.outcomes[-1]
+            and effectively_certain(event.cumulate_probability(last_occurrence.value), tolerance=certainty_tolerance))
+
+        if first_occurrence.value == last_occurrence.value:
+            exact = exact_lower_bound and exact_upper_bound
+            yield CashFlowLog(first_occurrence.value, 0, exact, cash_flow.amount, cash_flow.source, cash_flow.sink)
         else:
-            yield CashFlowLog(first_occurrence.value, -1, cash_flow.amount, cash_flow.source, cash_flow.sink)
-            yield CashFlowLog(last_occurrence.value, 1, cash_flow.amount, cash_flow.source, cash_flow.sink)
+            yield CashFlowLog(
+                first_occurrence.value, -1, exact_lower_bound, cash_flow.amount, cash_flow.source, cash_flow.sink)
+            yield CashFlowLog(
+                last_occurrence.value, 1, exact_upper_bound, cash_flow.amount, cash_flow.source, cash_flow.sink)
 
     events = cash_flow.schedule.iterate(date_range)
     event_log_iterators = map(generate_event_logs, events)

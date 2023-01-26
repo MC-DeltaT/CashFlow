@@ -214,9 +214,9 @@ class DateRange:
     @classmethod
     def empty(cls, at: date = date(1900, 1, 1)):
         """Creates a range containing no dates.
-        
+
             :param at: The upper and lower bound for the range."""
-        
+
         return cls.half_open(at, at)
 
     @property
