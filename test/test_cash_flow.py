@@ -4,10 +4,10 @@ from pytest import approx, raises
 
 from cashflow.cash_flow import (
     CashBalanceDelta, CashBalanceUpdate, CashEndpoint, CashFlowLog, CashSink, CashSource, ScheduledCashFlow,
-    accumulate_endpoint_balances, generate_cash_flow_logs, summarise_total_cash_flow)
+    accumulate_endpoint_balances, generate_balance_updates, generate_cash_flow_logs, summarise_total_cash_flow)
 from cashflow.date_time import DateRange
 from cashflow.probability import FloatDistribution
-from cashflow.schedule import DateDistribution, DayOfMonthDistribution, Monthly, Once, SimpleDayOfMonthSchedule
+from cashflow.schedule import DateDistribution, DayOfMonthDistribution, Monthly, Once, SimpleDayOfMonthSchedule, Weekly
 
 
 def test_scheduled_cash_flow_construct_invalid() -> None:
@@ -32,7 +32,123 @@ def test_cash_balance_delta_radd() -> None:
     assert result.mean == approx(15.24)
 
 
-# TODO: test generate_balance_updates()
+def test_generate_balance_updates_empty_range() -> None:
+    cash_flow = ScheduledCashFlow(
+        'schedule', CashSource('source'), CashSink('sink'),
+        FloatDistribution.singular(2), Weekly(3))
+    result = tuple(generate_balance_updates(cash_flow, DateRange.empty()))
+    assert result == ()
+
+def test_generate_balance_updates_no_occurrences() -> None:
+    cash_flow = ScheduledCashFlow(
+        'schedule', CashSource('source'), CashSink('sink'),
+        FloatDistribution.singular(2), Once(date(2023, 4, 10)))
+    result = tuple(generate_balance_updates(cash_flow, DateRange.up_to(date(2023, 3, 1))))
+    assert result == ()
+
+def test_generate_balance_updates_certain_occurrences() -> None:
+    source = CashSource('source')
+    sink = CashSink('sink')
+    cash_flow = ScheduledCashFlow(
+        'schedule', source, sink,
+        FloatDistribution(min=10, mean=11, max=25),
+        Monthly(day=6))
+    date_range = DateRange.inclusive(date(2023, 6, 6), date(2023, 8, 6))
+    result = tuple(generate_balance_updates(cash_flow, date_range))
+    assert result == (
+        CashBalanceUpdate(date(2023, 6, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), source, CashBalanceDelta(mean=-11), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), sink, CashBalanceDelta(mean=11), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), source, CashBalanceDelta(max=-10), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), sink, CashBalanceDelta(min=10), cash_flow),
+
+        CashBalanceUpdate(date(2023, 7, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), source, CashBalanceDelta(mean=-11), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), sink, CashBalanceDelta(mean=11), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), source, CashBalanceDelta(max=-10), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), sink, CashBalanceDelta(min=10), cash_flow),
+
+        CashBalanceUpdate(date(2023, 8, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), source, CashBalanceDelta(mean=-11), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), sink, CashBalanceDelta(mean=11), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), source, CashBalanceDelta(max=-10), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), sink, CashBalanceDelta(min=10), cash_flow)
+    )
+
+def test_generate_balance_updates_effectively_certain_occurrences() -> None:
+    source = CashSource('source')
+    sink = CashSink('sink')
+    schedule = Monthly(day=SimpleDayOfMonthSchedule((DayOfMonthDistribution.from_probabilities({
+        6: 0.99999999
+    }),)))
+    cash_flow = ScheduledCashFlow(
+        'schedule', source, sink,
+        FloatDistribution(min=10, mean=11, max=25),
+        schedule)
+    date_range = DateRange.inclusive(date(2023, 6, 6), date(2023, 8, 6))
+    result = tuple(generate_balance_updates(cash_flow, date_range))
+    assert result == (
+        CashBalanceUpdate(date(2023, 6, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), source, CashBalanceDelta(mean=-11), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), sink, CashBalanceDelta(mean=11), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), source, CashBalanceDelta(max=-10), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), sink, CashBalanceDelta(min=10), cash_flow),
+
+        CashBalanceUpdate(date(2023, 7, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), source, CashBalanceDelta(mean=-11), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), sink, CashBalanceDelta(mean=11), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), source, CashBalanceDelta(max=-10), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), sink, CashBalanceDelta(min=10), cash_flow),
+
+        CashBalanceUpdate(date(2023, 8, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), source, CashBalanceDelta(mean=-11), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), sink, CashBalanceDelta(mean=11), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), source, CashBalanceDelta(max=-10), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), sink, CashBalanceDelta(min=10), cash_flow)
+    )
+
+def test_generate_balance_updates_uncertain_occurrences() -> None:
+    source = CashSource('source')
+    sink = CashSink('sink')
+    schedule = Monthly(day=SimpleDayOfMonthSchedule((DayOfMonthDistribution.from_probabilities({
+        6: 0.5,
+        7: 0.2
+    }),)))
+    cash_flow = ScheduledCashFlow(
+        'schedule', source, sink,
+        FloatDistribution(min=10, mean=11, max=25),
+        schedule)
+    date_range = DateRange.inclusive(date(2023, 6, 6), date(2023, 8, 6))
+    result = tuple(generate_balance_updates(cash_flow, date_range))
+    assert result == (
+        CashBalanceUpdate(date(2023, 6, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), source, CashBalanceDelta(mean=-11 * 0.5), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 7), sink, CashBalanceDelta(mean=11 * 0.5), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 8), source, CashBalanceDelta(mean=-11 * 0.2), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 8), sink, CashBalanceDelta(mean=11 * 0.2), cash_flow),
+        # No max update because events are not certain.
+
+        CashBalanceUpdate(date(2023, 7, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), source, CashBalanceDelta(mean=-11 * 0.5), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 7), sink, CashBalanceDelta(mean=11 * 0.5), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 8), source, CashBalanceDelta(mean=-11 * 0.2), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 8), sink, CashBalanceDelta(mean=11 * 0.2), cash_flow),
+        # No max update because events are not certain.
+
+        CashBalanceUpdate(date(2023, 8, 6), source, CashBalanceDelta(min=-25), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 6), sink, CashBalanceDelta(max=25), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), source, CashBalanceDelta(mean=-11 * 0.5), cash_flow),
+        CashBalanceUpdate(date(2023, 8, 7), sink, CashBalanceDelta(mean=11 * 0.5), cash_flow)
+        # Last 2 mean updates are outside range.
+    )
 
 
 def test_accumulate_endpoint_balances_no_updates() -> None:
@@ -115,6 +231,19 @@ def test_summarise_cash_flow_certain_occurrence() -> None:
         DateRange.half_open(date(2022, 1, 1), date(2024, 1, 1)))
     assert result.approx_eq(FloatDistribution(min=10, max=34, mean=24.9))
 
+def test_summarise_cash_flow_effectively_certain_occurrence() -> None:
+    schedule = Once(DateDistribution.from_probabilities({
+        date(2023, 1, 1): 0.99999999999
+    }))
+    cash_flow = ScheduledCashFlow(
+        'test', CashSource('test source'), CashSink('test sink'),
+        FloatDistribution(min=10, max=34, mean=24.9),
+        schedule)
+    result = summarise_total_cash_flow(
+        cash_flow,
+        DateRange.half_open(date(2022, 1, 1), date(2024, 1, 1)))
+    assert result.approx_eq(FloatDistribution(min=10, max=34, mean=24.9))
+
 def test_summarise_cash_flow_uncertain_occurrence() -> None:
     schedule = Once(DateDistribution.from_probabilities({
         date(2023, 1, 1): 0.2,
@@ -158,11 +287,11 @@ def test_summarise_cash_flow_sanity_check() -> None:
     cash_flow1 = ScheduledCashFlow(
         'test', CashSource('test source'), CashSink('test sink'),
         FloatDistribution(min=10, max=100, mean=20),
-        Monthly(15, period=1))
+        Monthly(day=15, period=1))
     cash_flow2 = ScheduledCashFlow(
         'test', CashSource('test source'), CashSink('test sink'),
         FloatDistribution(min=30, max=300, mean=60),
-        Monthly(15, period=3, range=DateRange.beginning_at(date(2023, 1, 1))))
+        Monthly(day=15, period=3, range=DateRange.beginning_at(date(2023, 1, 1))))
     result1 = summarise_total_cash_flow(
         cash_flow1,
         DateRange.inclusive(date(2023, 1, 1), date(2025, 1, 1)))
@@ -270,7 +399,7 @@ def test_generate_cash_flow_logs_certain_event() -> None:
     source = CashSource('test source')
     sink = CashSink('test sink')
     amount = FloatDistribution(min=10, mean=15, max=20)
-    cash_flow = ScheduledCashFlow('test', source, sink, amount, Monthly(10))
+    cash_flow = ScheduledCashFlow('test', source, sink, amount, Monthly(day=10))
     result = tuple(generate_cash_flow_logs(cash_flow, DateRange.inclusive(date(2022, 1, 1), date(2022, 6, 1))))
     assert result == (
         CashFlowLog(date(2022, 1, 10), 0, True, amount, source, sink),

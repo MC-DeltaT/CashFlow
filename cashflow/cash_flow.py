@@ -117,14 +117,22 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
 
         assert event.probability_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound) > 0
         for occurrence in event.iterate(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
-            # Mean increases linearly up to the end of the day of occurrence (i.e. the following day).
-            # Since this event occurs on the following day, we have to defer yielding until later to preserve
-            # chronological order.
+            # Mean increases linearly up to the end of the day of occurrence (i.e. start of the following day).
+            # The following day could be outside the requested date range, but we'll allow it because it's equivalent to
+            # the end of the last day in the range.
             following_date = occurrence.value + timedelta(days=1)
+
+            # If we count the occurrence as certain, then it doesn't make much sense to adjust the mean by any
+            # probability other than 1.
+            if effectively_certain(occurrence.probability, tolerance=certainty_tolerance):
+                probability = 1
+            else:
+                probability = occurrence.probability
+
             yield CashBalanceUpdate(
-                following_date, source, CashBalanceDelta(mean=-amount.mean * occurrence.probability), cash_flow)
+                following_date, source, CashBalanceDelta(mean=-amount.mean * probability), cash_flow)
             yield CashBalanceUpdate(
-                following_date, sink, CashBalanceDelta(mean=amount.mean * occurrence.probability), cash_flow)
+                following_date, sink, CashBalanceDelta(mean=amount.mean * probability), cash_flow)
 
         last_occurrence = event.upper_bound_inclusive(date_range.inclusive_upper_bound)
         assert last_occurrence is not None
@@ -132,7 +140,9 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
             tolerance=certainty_tolerance)
         if has_upper_bound:
             # Date upper bound - event must have occurred by now.
-            # Upper bound is at the end of the day of occurrence (i.e. the following day).
+            # Upper bound is at the end of the day of occurrence (i.e. start of the following day).
+            # The following day could be outside the requested date range, but we'll allow it because it's equivalent to
+            # the end of the last day in the range.
             following_date = last_occurrence.value + timedelta(days=1)
             yield CashBalanceUpdate(following_date, source, CashBalanceDelta(max=-amount.min), cash_flow)
             yield CashBalanceUpdate(following_date, sink, CashBalanceDelta(min=amount.min), cash_flow)

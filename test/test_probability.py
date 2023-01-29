@@ -234,6 +234,10 @@ def test_float_distribution_to_str_singular() -> None:
     d = FloatDistribution.singular(123.456789)
     assert d.to_str(4) == '123.4568'
 
+def test_float_distribution_to_str_near_singular() -> None:
+    d = FloatDistribution(min=10.0001, mean=10.0002, max=10.0003)
+    assert d.to_str(3) == '10.000'
+
 def test_float_distribution_to_str_nonsingular() -> None:
     d = FloatDistribution(min=-1.25, mean=3.4444444444, max=5.654)
     assert d.to_str(3) == '[-1.250, (3.444), 5.654]'

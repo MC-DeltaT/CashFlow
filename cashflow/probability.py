@@ -79,7 +79,10 @@ class DiscreteDistribution(Generic[TOrdered]):
 
     @classmethod
     def from_probabilities(cls, value_probabilities: Mapping[TOrdered, float], /):
-        """Creates a distribution from a mapping from values to occurrence probabilities."""
+        """Creates a distribution from a mapping from values to occurrence probabilities.
+
+            If the sum of probabilities is very near 1, then the probabilities will be adjusted so that the sum is
+            exactly 1."""
 
         return cls._from_probabilities(value_probabilities)
 
