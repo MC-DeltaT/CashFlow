@@ -1,10 +1,13 @@
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from heapq import merge
 from typing import Callable
 
+from matplotlib import pyplot
+
 from .cash_flow import (
-    CashEndpoint, CashSink, CashSource, ScheduledCashFlow, generate_cash_flow_logs, plot_balances_over_time,
+    CashBalanceRecord, CashEndpoint, CashSink, CashSource, ScheduledCashFlow, generate_cash_flow_logs,
     simulate_cash_balances, summarise_total_cash_flow)
 from .date_time import DateRange
 from .probability import DEFAULT_CERTAINTY_TOLERANCE, FloatDistribution
@@ -16,6 +19,7 @@ __all__ = [
     'CashFlowAnalysis',
     'ExpenseSink',
     'IncomeSource',
+    'plot_balances_over_time',
     'ScheduleBuilder',
     'tagset'
 ]
@@ -118,8 +122,50 @@ class CashFlowAnalysis:
     # TODO: fix the issue with Mapping variance
     def plot_balances_over_time(self, endpoints: Collection[CashEndpoint],
             initial_balances: Mapping[CashEndpoint, float] = {}) -> None:
+        initial_balance_dists = {
+                endpoint: FloatDistribution.singular(balance) for endpoint, balance in initial_balances.items()}
         endpoint_balances = simulate_cash_balances(
-            self._cash_flows, self._date_range, initial_balances, self._certainty_tolerance)
+            self._cash_flows, self._date_range, initial_balance_dists, self._certainty_tolerance)
         endpoint_balances = {
             endpoint: balances for endpoint, balances in endpoint_balances.items() if endpoint in endpoints}
         plot_balances_over_time(endpoint_balances)
+
+
+def plot_balances_over_time(endpoint_balances: Mapping[CashEndpoint, Sequence[CashBalanceRecord]], /) -> None:
+    """Plots `CashEndpoint` balances over time.
+
+        `endpoint_balances` must be presorted in chronological order."""
+
+    if not endpoint_balances:
+        raise ValueError('endpoint_balances must not be empty')
+
+    def extract_individual_series(balances: Sequence[CashBalanceRecord]):
+        return (
+            [balance.date for balance in balances],
+            [balance.amount.min for balance in balances],
+            [balance.amount.max for balance in balances],
+            [balance.amount.mean for balance in balances]
+        )
+
+    def plot_balances(dates: Sequence[date], min_balances: Sequence[float], max_balances: Sequence[float],
+            mean_balances: Sequence[float], label: str) -> None:
+        min_widths = [mean - min_ for mean, min_ in zip(mean_balances, min_balances, strict=True)]
+        max_widths = [max_ - mean for mean, max_ in zip(mean_balances, max_balances, strict=True)]
+        plot = pyplot.errorbar(dates, mean_balances, yerr=(min_widths, max_widths), label=label)
+        plot[-1][0].set_linestyle('--')
+
+    extracted_series = {
+        endpoint: extract_individual_series(balances) for endpoint, balances in endpoint_balances.items()}
+
+    min_date = min(min(data[0]) for data in extracted_series.values())
+    max_date = max(max(data[0]) for data in extracted_series.values())
+
+    for endpoint, extracted in extracted_series.items():
+        plot_balances(*extracted, endpoint.label)
+
+    pyplot.title(f'Funds from {min_date} to {max_date}')
+    pyplot.xlabel('Date')
+    pyplot.ylabel('Funds ($)')
+    pyplot.legend()
+    pyplot.tight_layout()
+    pyplot.show()

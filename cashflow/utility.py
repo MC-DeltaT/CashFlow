@@ -11,7 +11,7 @@ __all__ = [
 ]
 
 
-TOrdered = TypeVar('TOrdered', bound='Ordered')
+T_Ordered = TypeVar('T_Ordered', bound='Ordered')
 
 
 class Ordered(Protocol):
@@ -22,11 +22,11 @@ class Ordered(Protocol):
         raise NotImplementedError()
 
     @abstractmethod
-    def __lt__(self: TOrdered, other: TOrdered, /) -> bool:
+    def __lt__(self: T_Ordered, other: T_Ordered, /) -> bool:
         raise NotImplementedError()
 
     @abstractmethod
-    def __le__(self: TOrdered, other: TOrdered, /) -> bool:
+    def __le__(self: T_Ordered, other: T_Ordered, /) -> bool:
         raise NotImplementedError()
 
     @abstractmethod
@@ -38,8 +38,11 @@ class HasDate(Protocol):
     date: date
 
 
-THasDate = TypeVar('THasDate', bound=HasDate)
+T_HasDate = TypeVar('T_HasDate', bound=HasDate)
 
 
-def merge_by_date(iterables: Iterable[Iterable[THasDate]]) -> Iterable[THasDate]:
+def merge_by_date(iterables: Iterable[Iterable[T_HasDate]]) -> Iterable[T_HasDate]:
+    """Merges multiple sorted iterables into one sorted iterable.
+        Objects are ordered by their `date` attribute."""
+
     return merge(*iterables, key=lambda item: item.date)

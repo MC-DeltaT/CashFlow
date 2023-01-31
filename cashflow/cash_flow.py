@@ -1,12 +1,10 @@
 from abc import ABC
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 from heapq import merge
 from itertools import groupby
-
-from matplotlib import pyplot
 
 from .date_time import DateRange
 from .probability import DEFAULT_CERTAINTY_TOLERANCE, FloatDistribution, effectively_certain
@@ -25,7 +23,6 @@ __all__ = [
     'CashSource',
     'generate_balance_updates',
     'generate_cash_flow_logs',
-    'plot_balances_over_time',
     'ScheduledCashFlow',
     'simulate_cash_balances',
     'summarise_total_cash_flow'
@@ -188,30 +185,33 @@ def accumulate_endpoint_balances(updates: Iterable[CashBalanceUpdate], /,
                 CashBalanceRecord(day, amount=endpoint_balances[endpoint]))
 
         prev_day = day
-    return result
+
+    return dict(result)
 
 
 def simulate_cash_balances(cash_flows: Iterable[ScheduledCashFlow], date_range: DateRange,
-        initial_balances: Mapping[CashEndpoint, float] = {}, certainty_tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) \
+        initial_balances: Mapping[CashEndpoint, FloatDistribution] = {},
+        certainty_tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) \
         -> dict[CashEndpoint, list[CashBalanceRecord]]:
     """Simulates cash balances of endpoints resulting from cash flows over the specified timeframe."""
-
-    initial_balances_ = {
-        endpoint: FloatDistribution.singular(balance) for endpoint, balance in initial_balances.items()}
 
     balance_updates = merge_by_date(
         generate_balance_updates(cash_flow, date_range, certainty_tolerance=certainty_tolerance)
         for cash_flow in cash_flows)
-    balance_records = accumulate_endpoint_balances(balance_updates, initial_balances=initial_balances_)
+    balance_records = accumulate_endpoint_balances(balance_updates, initial_balances)
 
-    # Prepend opening account balances at the start of the specified timeframe.
-    for endpoint, balance in initial_balances_.items():
-        balance_records[endpoint].insert(0, CashBalanceRecord(date_range.inclusive_lower_bound, balance))
+    if not date_range.is_empty:
+        # Prepend opening account balances at the start of the specified timeframe.
+        # The opening balance will never already be present, since the result of accumulate_endpoint_balances() will
+        # start after the first balance update.
+        for endpoint, balance in initial_balances.items():
+            records = balance_records.setdefault(endpoint, [])
+            if not records or date_range.inclusive_lower_bound < records[0].date:
+                records.insert(0, CashBalanceRecord(date_range.inclusive_lower_bound, balance))
 
-    # Append closing balances at the end of the specified timeframe (if not already present).
-    if not date_range.is_empty and balance_records:
+        # Append closing balances at the end of the specified timeframe (if not already present).
         for records in balance_records.values():
-            if records and date_range.exclusive_upper_bound > records[-1].date:
+            if not records or date_range.exclusive_upper_bound > records[-1].date:
                 records.append(CashBalanceRecord(date_range.exclusive_upper_bound, records[-1].amount))
 
     return balance_records
@@ -308,43 +308,3 @@ def generate_cash_flow_logs(cash_flow: ScheduledCashFlow, date_range: DateRange,
     events = cash_flow.schedule.iterate(date_range)
     event_log_iterators = map(generate_event_logs, events)
     return merge(*event_log_iterators)
-
-
-def plot_balances_over_time(endpoint_balances: Mapping[CashEndpoint, Sequence[CashBalanceRecord]], /) -> None:
-    """Plots `CashEndpoint` balances over time.
-
-        `endpoint_balances` must be presorted in chronological order."""
-
-    if not endpoint_balances:
-        raise ValueError('endpoint_balances must not be empty')
-
-    def extract_individual_series(balances: Sequence[CashBalanceRecord]):
-        return (
-            [balance.date for balance in balances],
-            [balance.amount.min for balance in balances],
-            [balance.amount.max for balance in balances],
-            [balance.amount.mean for balance in balances]
-        )
-
-    def plot_balances(dates: Sequence[date], min_balances: Sequence[float], max_balances: Sequence[float],
-            mean_balances: Sequence[float], label: str) -> None:
-        min_widths = [mean - min_ for mean, min_ in zip(mean_balances, min_balances, strict=True)]
-        max_widths = [max_ - mean for mean, max_ in zip(mean_balances, max_balances, strict=True)]
-        plot = pyplot.errorbar(dates, mean_balances, yerr=(min_widths, max_widths), label=label)
-        plot[-1][0].set_linestyle('--')
-
-    extracted_series = {
-        endpoint: extract_individual_series(balances) for endpoint, balances in endpoint_balances.items()}
-
-    min_date = min(min(data[0]) for data in extracted_series.values())
-    max_date = max(max(data[0]) for data in extracted_series.values())
-
-    for endpoint, extracted in extracted_series.items():
-        plot_balances(*extracted, endpoint.label)
-
-    pyplot.title(f'Funds from {min_date} to {max_date}')
-    pyplot.xlabel('Date')
-    pyplot.ylabel('Funds ($)')
-    pyplot.legend()
-    pyplot.tight_layout()
-    pyplot.show()

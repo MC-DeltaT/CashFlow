@@ -17,8 +17,8 @@ __all__ = [
 ]
 
 
-TOrdered = TypeVar('TOrdered', bound=Ordered)
-TOrdered2 = TypeVar('TOrdered2', bound=Ordered)
+T_Ordered = TypeVar('T_Ordered', bound=Ordered)
+T_Ordered2 = TypeVar('T_Ordered2', bound=Ordered)
 
 
 DEFAULT_CERTAINTY_TOLERANCE = 1e-6
@@ -36,8 +36,8 @@ def effectively_certain(probability: float, /, *, tolerance: float = DEFAULT_CER
 
 
 @dataclass(frozen=True)
-class DiscreteOutcome(Generic[TOrdered]):
-    value: TOrdered
+class DiscreteOutcome(Generic[T_Ordered]):
+    value: T_Ordered
     probability: float      # The unconditional probability that the outcome is equal to `value`.
 
     def __post_init__(self) -> None:
@@ -46,15 +46,15 @@ class DiscreteOutcome(Generic[TOrdered]):
 
 
 @dataclass(frozen=True)
-class DiscreteDistribution(Generic[TOrdered]):
+class DiscreteDistribution(Generic[T_Ordered]):
     """Describes the probabilities of a set of discrete outcomes.
 
         This class can represent an entire probability distribution (i.e. probability sums to 1) or a subset of a
         distribution (i.e. probability sums to less than 1)."""
 
-    outcomes: tuple[DiscreteOutcome[TOrdered], ...]     # Sorted in ascending order.
+    outcomes: tuple[DiscreteOutcome[T_Ordered], ...]     # Sorted in ascending order.
 
-    def __init__(self, outcomes: Iterable[DiscreteOutcome[TOrdered]]) -> None:
+    def __init__(self, outcomes: Iterable[DiscreteOutcome[T_Ordered]]) -> None:
         """Construct the distribution from information about each outcome.
 
             Outcomes need not perfectly describe a complete probability distribution, but the following must be true:
@@ -69,7 +69,7 @@ class DiscreteDistribution(Generic[TOrdered]):
         super().__setattr__('outcomes', outcomes)
 
     @classmethod
-    def from_weights(cls, value_weights: Mapping[TOrdered, float], /):
+    def from_weights(cls, value_weights: Mapping[T_Ordered, float], /):
         """Creates a distribution from a mapping of values to likelihood weights.
             The probability of each outcome is formed by normalising the weights to sum to 1."""
 
@@ -78,7 +78,7 @@ class DiscreteDistribution(Generic[TOrdered]):
         return cls._from_probabilities(value_probabilities)
 
     @classmethod
-    def from_probabilities(cls, value_probabilities: Mapping[TOrdered, float], /):
+    def from_probabilities(cls, value_probabilities: Mapping[T_Ordered, float], /):
         """Creates a distribution from a mapping from values to occurrence probabilities.
 
             If the sum of probabilities is very near 1, then the probabilities will be adjusted so that the sum is
@@ -87,20 +87,20 @@ class DiscreteDistribution(Generic[TOrdered]):
         return cls._from_probabilities(value_probabilities)
 
     @classmethod
-    def singular(cls, value: TOrdered, /):
+    def singular(cls, value: T_Ordered, /):
         """Creates a distribution with a single value with 100% probability."""
 
         return cls.uniformly_of(value)
 
     @classmethod
-    def uniformly_in(cls, values: Iterable[TOrdered], /):
+    def uniformly_in(cls, values: Iterable[T_Ordered], /):
         """Creates a distribution where each of `values` has an equal probability of occurring.
             The total probability will sum to 1."""
 
         return cls.from_weights({value: 1 for value in values})
 
     @classmethod
-    def uniformly_of(cls, *values: TOrdered):
+    def uniformly_of(cls, *values: T_Ordered):
         """Creates a distribution where each of `values` has an equal probability of occurring.
             The total probability will sum to 1."""
 
@@ -116,20 +116,20 @@ class DiscreteDistribution(Generic[TOrdered]):
     def has_possible_outcomes(self) -> bool:
         return len(self.outcomes) > 0
 
-    def probability_in(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) -> float:
+    def probability_in(self, inclusive_lower_bound: T_Ordered, exclusive_upper_bound: T_Ordered) -> float:
         """Returns the sum of probability of all outcomes in the interval
             [`inclusive_lower_bound`, `exclusive_upper_bound`)."""
 
         return sum(outcome.probability for outcome in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
 
-    def cumulate_probability(self, value: TOrdered, /) -> float:
+    def cumulate_probability(self, value: T_Ordered, /) -> float:
         """Computes the total probability of outcomes with value <= `value`."""
 
         cumulative = sum(outcome.probability for outcome in self.outcomes if outcome.value <= value)
         # Sum may exceed 1 slightly due to floating point error.
         return min(cumulative, 1)
 
-    def lower_bound_inclusive(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
+    def lower_bound_inclusive(self, value: T_Ordered, /) -> DiscreteOutcome[T_Ordered] | None:
         """Returns the outcome with the lowest value >= `value`and nonzero probability, or `None` if there is no such
             outcome."""
 
@@ -139,7 +139,7 @@ class DiscreteDistribution(Generic[TOrdered]):
         else:
             return None
 
-    def upper_bound_inclusive(self, value: TOrdered, /) -> DiscreteOutcome[TOrdered] | None:
+    def upper_bound_inclusive(self, value: T_Ordered, /) -> DiscreteOutcome[T_Ordered] | None:
         """Returns the outcome with the highest value <= `value` and nonzero probability, or `None` if there is no such
             outcome."""
 
@@ -149,14 +149,14 @@ class DiscreteDistribution(Generic[TOrdered]):
         else:
             return None
 
-    def iterate(self, inclusive_lower_bound: TOrdered, exclusive_upper_bound: TOrdered) \
-            -> Iterable[DiscreteOutcome[TOrdered]]:
+    def iterate(self, inclusive_lower_bound: T_Ordered, exclusive_upper_bound: T_Ordered) \
+            -> Iterable[DiscreteOutcome[T_Ordered]]:
         """Iterates outcomes within the interval [`inclusive_lower_bound`, `exclusive_upper_bound`) that have nonzero
             probability, in ascending order."""
 
         return (outcome for outcome in self.outcomes if inclusive_lower_bound <= outcome.value < exclusive_upper_bound)
 
-    def subset(self, func: Callable[[TOrdered], bool], /):
+    def subset(self, func: Callable[[T_Ordered], bool], /):
         """Creates a new distribution where outcomes for which `func` returns false have 0 probability (i.e. removed).
 
             The occurrence probability of each remaining outcome is unchanged."""
@@ -164,24 +164,24 @@ class DiscreteDistribution(Generic[TOrdered]):
         filtered_outcomes = (outcome for outcome in self.outcomes if func(outcome.value))
         return type(self)(filtered_outcomes)
 
-    def map_values(self, func: Callable[[TOrdered], TOrdered2], /):
+    def map_values(self, func: Callable[[T_Ordered], T_Ordered2], /):
         """Creates a new distribution with outcome values mapped by `func`.
 
             The mapping need not be bijective. If multiple values are mapped to the same new value, the occurrence
             probabilities will be summed. However, the result must still be a valid distribution (e.g. total probability
             cannot exceed 1)."""
 
-        value_probabilities: defaultdict[TOrdered2, float] = defaultdict(float)
+        value_probabilities: defaultdict[T_Ordered2, float] = defaultdict(float)
         for outcome in self.outcomes:
             value_probabilities[func(outcome.value)] += outcome.probability
-        return DiscreteDistribution[TOrdered2].from_probabilities(value_probabilities)
+        return DiscreteDistribution[T_Ordered2].from_probabilities(value_probabilities)
 
-    def approx_eq(self, other: 'DiscreteDistribution[TOrdered]', /, *, rel_tol: float = 1e-6, abs_tol: float = 0) \
+    def approx_eq(self, other: 'DiscreteDistribution[T_Ordered]', /, *, rel_tol: float = 1e-6, abs_tol: float = 0) \
             -> bool:
         """Checks if two distributions have the same outcomes and probabilities, tolerating some floating point
             inaccuracy when comparing probabilities."""
 
-        def outcome_approx_eq(outcome1: DiscreteOutcome[TOrdered], outcome2: DiscreteOutcome[TOrdered]) -> bool:
+        def outcome_approx_eq(outcome1: DiscreteOutcome[T_Ordered], outcome2: DiscreteOutcome[T_Ordered]) -> bool:
             # The outcome values must be exactly equal, because the distribution is designed to be discrete - we don't
             # care for floating point values.
             return (outcome1.value == outcome2.value
@@ -197,10 +197,10 @@ class DiscreteDistribution(Generic[TOrdered]):
         clamped to 1 in some circumstances to correct for floating point inaccuracy."""
 
     @classmethod
-    def _from_probabilities(cls, value_probabilities: Mapping[TOrdered, float], /,
+    def _from_probabilities(cls, value_probabilities: Mapping[T_Ordered, float], /,
             clamp_cumulative_down: float = _CUMULATIVE_PROBABILITY_CLAMP,
             clamp_cumulative_up: float = _CUMULATIVE_PROBABILITY_CLAMP):
-        outcomes: list[DiscreteOutcome[TOrdered]] = []
+        outcomes: list[DiscreteOutcome[T_Ordered]] = []
         sorted_values = sorted(value_probabilities.keys())
         cumulative_probability = 0
         for value in sorted_values:

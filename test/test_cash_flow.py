@@ -3,8 +3,9 @@ from datetime import date
 from pytest import approx, raises
 
 from cashflow.cash_flow import (
-    CashBalanceDelta, CashBalanceUpdate, CashEndpoint, CashFlowLog, CashSink, CashSource, ScheduledCashFlow,
-    accumulate_endpoint_balances, generate_balance_updates, generate_cash_flow_logs, summarise_total_cash_flow)
+    CashBalanceDelta, CashBalanceRecord, CashBalanceUpdate, CashEndpoint, CashFlowLog, CashSink, CashSource,
+    ScheduledCashFlow, accumulate_endpoint_balances, generate_balance_updates, generate_cash_flow_logs,
+    simulate_cash_balances, summarise_total_cash_flow)
 from cashflow.date_time import DateRange
 from cashflow.probability import FloatDistribution
 from cashflow.schedule import DateDistribution, DayOfMonthDistribution, Monthly, Once, SimpleDayOfMonthSchedule, Weekly
@@ -118,7 +119,7 @@ def test_generate_balance_updates_uncertain_occurrences() -> None:
     sink = CashSink('sink')
     schedule = Monthly(day=SimpleDayOfMonthSchedule((DayOfMonthDistribution.from_probabilities({
         6: 0.5,
-        7: 0.2
+        10: 0.2
     }),)))
     cash_flow = ScheduledCashFlow(
         'schedule', source, sink,
@@ -131,16 +132,16 @@ def test_generate_balance_updates_uncertain_occurrences() -> None:
         CashBalanceUpdate(date(2023, 6, 6), sink, CashBalanceDelta(max=25), cash_flow),
         CashBalanceUpdate(date(2023, 6, 7), source, CashBalanceDelta(mean=-11 * 0.5), cash_flow),
         CashBalanceUpdate(date(2023, 6, 7), sink, CashBalanceDelta(mean=11 * 0.5), cash_flow),
-        CashBalanceUpdate(date(2023, 6, 8), source, CashBalanceDelta(mean=-11 * 0.2), cash_flow),
-        CashBalanceUpdate(date(2023, 6, 8), sink, CashBalanceDelta(mean=11 * 0.2), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 11), source, CashBalanceDelta(mean=-11 * 0.2), cash_flow),
+        CashBalanceUpdate(date(2023, 6, 11), sink, CashBalanceDelta(mean=11 * 0.2), cash_flow),
         # No max update because events are not certain.
 
         CashBalanceUpdate(date(2023, 7, 6), source, CashBalanceDelta(min=-25), cash_flow),
         CashBalanceUpdate(date(2023, 7, 6), sink, CashBalanceDelta(max=25), cash_flow),
         CashBalanceUpdate(date(2023, 7, 7), source, CashBalanceDelta(mean=-11 * 0.5), cash_flow),
         CashBalanceUpdate(date(2023, 7, 7), sink, CashBalanceDelta(mean=11 * 0.5), cash_flow),
-        CashBalanceUpdate(date(2023, 7, 8), source, CashBalanceDelta(mean=-11 * 0.2), cash_flow),
-        CashBalanceUpdate(date(2023, 7, 8), sink, CashBalanceDelta(mean=11 * 0.2), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 11), source, CashBalanceDelta(mean=-11 * 0.2), cash_flow),
+        CashBalanceUpdate(date(2023, 7, 11), sink, CashBalanceDelta(mean=11 * 0.2), cash_flow),
         # No max update because events are not certain.
 
         CashBalanceUpdate(date(2023, 8, 6), source, CashBalanceDelta(min=-25), cash_flow),
@@ -200,8 +201,102 @@ def test_accumulate_endpoint_balances() -> None:
     assert endpoint2_result[1].amount.approx_eq(FloatDistribution(min=78, max=87.7, mean=79.6))
 
 
-# TODO: test simulate_cash_balances()
+def test_simulate_cash_balances_empty_range_no_initial_balances() -> None:
+    result = simulate_cash_balances((), DateRange.empty(), {})
+    assert len(result) == 0
 
+def test_simulate_cash_balances_empty_range_with_initial_balances() -> None:
+    initial_balances = {CashEndpoint('foo'): FloatDistribution.singular(4.5)}
+    result = simulate_cash_balances((), DateRange.empty(), initial_balances)
+    assert len(result) == 0
+
+def test_simulate_cash_balances_no_occurrences_no_initial_balances() -> None:
+    cash_flows = (ScheduledCashFlow('foo', CashSource('bar'), CashSink('qux'),
+        FloatDistribution.singular(3), Once(date(2022, 8, 12))),)
+    result = simulate_cash_balances(cash_flows, DateRange.beginning_at(date(2023, 1, 1)))
+    assert len(result) == 0
+
+def test_simulate_cash_balances_no_occurrences_with_initial_balances() -> None:
+    source = CashSource('bar')
+    sink = CashSink('qux')
+    cash_flows = (ScheduledCashFlow('foo', source, sink,
+        FloatDistribution.singular(3), Once(date(2022, 8, 12))),)
+    date_range = DateRange.inclusive(date(2023, 1, 1), date(2024, 1, 1))
+    initial_balances = {source: FloatDistribution.singular(15), sink: FloatDistribution.singular(6)}
+    result = simulate_cash_balances(cash_flows, date_range, initial_balances)
+    assert result == {
+        source: [
+            CashBalanceRecord(date(2023, 1, 1), FloatDistribution.singular(15)),
+            CashBalanceRecord(date(2024, 1, 2), FloatDistribution.singular(15)),
+        ],
+        sink: [
+            CashBalanceRecord(date(2023, 1, 1), FloatDistribution.singular(6)),
+            CashBalanceRecord(date(2024, 1, 2), FloatDistribution.singular(6)),
+        ]
+    }
+
+def test_simulate_cash_balances_some_occurrences() -> None:
+    source1 = CashSource('source1')
+    sink = CashSink('sink')
+    source2 = CashSource('source2')
+    cash_flows = (
+        ScheduledCashFlow('flow1', source1, sink, FloatDistribution(min=10, mean=20, max=40), Monthly(day=2)),
+        ScheduledCashFlow('flow2', source2, sink, FloatDistribution(min=2, mean=4, max=5),
+            Monthly(day=SimpleDayOfMonthSchedule((DayOfMonthDistribution.from_probabilities({3: 0.25, 10: 0.5}),))))
+    )
+    date_range = DateRange.inclusive(date(2023, 1, 3), date(2023, 4, 2))
+    initial_balances = {source1: FloatDistribution.singular(10), source2: FloatDistribution.singular(-10)}
+    result = simulate_cash_balances(cash_flows, date_range, initial_balances)
+    assert result == {
+        source1: [
+            # 2023/1
+            CashBalanceRecord(date(2023, 1, 3), FloatDistribution.singular(10)),
+            # 2023/2
+            CashBalanceRecord(date(2023, 2, 2), FloatDistribution(min=-30, mean=10, max=10)),
+            CashBalanceRecord(date(2023, 2, 3), FloatDistribution(min=-30, mean=-10, max=0)),
+            # 2023/3
+            CashBalanceRecord(date(2023, 3, 2), FloatDistribution(min=-70, mean=-10, max=0)),
+            CashBalanceRecord(date(2023, 3, 3), FloatDistribution(min=-70, mean=-30, max=-10)),
+            # 2023/4
+            CashBalanceRecord(date(2023, 4, 2), FloatDistribution(min=-110, mean=-30, max=-10)),
+            CashBalanceRecord(date(2023, 4, 3), FloatDistribution(min=-110, mean=-50, max=-20))
+        ],
+        source2: [
+            # 2023/1
+            CashBalanceRecord(date(2023, 1, 3), FloatDistribution(min=-15, mean=-10, max=-10)),
+            CashBalanceRecord(date(2023, 1, 4), FloatDistribution(min=-15, mean=-11, max=-10)),
+            CashBalanceRecord(date(2023, 1, 11), FloatDistribution(min=-15, mean=-13, max=-10)),
+            # 2023/2
+            CashBalanceRecord(date(2023, 2, 3), FloatDistribution(min=-20, mean=-13, max=-10)),
+            CashBalanceRecord(date(2023, 2, 4), FloatDistribution(min=-20, mean=-14, max=-10)),
+            CashBalanceRecord(date(2023, 2, 11), FloatDistribution(min=-20, mean=-16, max=-10)),
+            # 2023/3
+            CashBalanceRecord(date(2023, 3, 3), FloatDistribution(min=-25, mean=-16, max=-10)),
+            CashBalanceRecord(date(2023, 3, 4), FloatDistribution(min=-25, mean=-17, max=-10)),
+            CashBalanceRecord(date(2023, 3, 11), FloatDistribution(min=-25, mean=-19, max=-10)),
+            # 2023/4
+            CashBalanceRecord(date(2023, 4, 3), FloatDistribution(min=-25, mean=-19, max=-10))
+        ],
+        sink: [
+            # 2023/1
+            CashBalanceRecord(date(2023, 1, 3), FloatDistribution(min=0, mean=0, max=5)),
+            CashBalanceRecord(date(2023, 1, 4), FloatDistribution(min=0, mean=1, max=5)),
+            CashBalanceRecord(date(2023, 1, 11), FloatDistribution(min=0, mean=3, max=5)),
+            # 2023/2
+            CashBalanceRecord(date(2023, 2, 2), FloatDistribution(min=0, mean=3, max=45)),
+            CashBalanceRecord(date(2023, 2, 3), FloatDistribution(min=10, mean=23, max=50)),
+            CashBalanceRecord(date(2023, 2, 4), FloatDistribution(min=10, mean=24, max=50)),
+            CashBalanceRecord(date(2023, 2, 11), FloatDistribution(min=10, mean=26, max=50)),
+            # 2023/3
+            CashBalanceRecord(date(2023, 3, 2), FloatDistribution(min=10, mean=26, max=90)),
+            CashBalanceRecord(date(2023, 3, 3), FloatDistribution(min=20, mean=46, max=95)),
+            CashBalanceRecord(date(2023, 3, 4), FloatDistribution(min=20, mean=47, max=95)),
+            CashBalanceRecord(date(2023, 3, 11), FloatDistribution(min=20, mean=49, max=95)),
+            # 2023/4
+            CashBalanceRecord(date(2023, 4, 2), FloatDistribution(min=20, mean=49, max=135)),
+            CashBalanceRecord(date(2023, 4, 3), FloatDistribution(min=30, mean=69, max=135)),
+        ]
+    }
 
 def test_summarise_total_cash_flow_empty_range() -> None:
     cash_flow = ScheduledCashFlow(
