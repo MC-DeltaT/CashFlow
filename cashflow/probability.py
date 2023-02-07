@@ -2,13 +2,13 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from math import isclose
 from typing import Callable, Generic, TypeVar, Union
 
 from .utility import Ordered
 
 
 __all__ = [
+    'clamp_certain',
     'DEFAULT_CERTAINTY_TOLERANCE',
     'DiscreteDistribution',
     'DiscreteOutcome',
@@ -33,6 +33,15 @@ def effectively_certain(probability: float, /, *, tolerance: float = DEFAULT_CER
         raise ValueError('tolerance must be >= 0')
     else:
         return probability >= 1 - tolerance
+
+
+def clamp_certain(probability: float, /, *, tolerance: float = DEFAULT_CERTAINTY_TOLERANCE) -> float:
+    """If `probability` is very near to 1, then returns 1. Else returns `probability`."""
+
+    if effectively_certain(probability, tolerance=tolerance):
+        return 1
+    else:
+        return probability
 
 
 @dataclass(frozen=True)
@@ -122,7 +131,7 @@ class DiscreteDistribution(Generic[T_Ordered]):
 
         return sum(outcome.probability for outcome in self.iterate(inclusive_lower_bound, exclusive_upper_bound))
 
-    def cumulate_probability(self, value: T_Ordered, /) -> float:
+    def cumulative_probability(self, value: T_Ordered, /) -> float:
         """Computes the total probability of outcomes with value <= `value`."""
 
         cumulative = sum(outcome.probability for outcome in self.outcomes if outcome.value <= value)
@@ -176,22 +185,6 @@ class DiscreteDistribution(Generic[T_Ordered]):
             value_probabilities[func(outcome.value)] += outcome.probability
         return DiscreteDistribution[T_Ordered2].from_probabilities(value_probabilities)
 
-    def approx_eq(self, other: 'DiscreteDistribution[T_Ordered]', /, *, rel_tol: float = 1e-6, abs_tol: float = 0) \
-            -> bool:
-        """Checks if two distributions have the same outcomes and probabilities, tolerating some floating point
-            inaccuracy when comparing probabilities."""
-
-        def outcome_approx_eq(outcome1: DiscreteOutcome[T_Ordered], outcome2: DiscreteOutcome[T_Ordered]) -> bool:
-            # The outcome values must be exactly equal, because the distribution is designed to be discrete - we don't
-            # care for floating point values.
-            return (outcome1.value == outcome2.value
-                and isclose(outcome1.probability, outcome2.probability, rel_tol=rel_tol, abs_tol=abs_tol))
-
-        if len(self.outcomes) != len(other.outcomes):
-            return False
-        else:
-            return all(outcome_approx_eq(o1, o2) for o1, o2 in zip(self.outcomes, other.outcomes))
-
     _CUMULATIVE_PROBABILITY_CLAMP = 1e-9
     """If the difference between a cumulative probability and 1 is less than this value, then the probability may be
         clamped to 1 in some circumstances to correct for floating point inaccuracy."""
@@ -236,8 +229,8 @@ class FloatDistribution:
     """A basic probability distribution on the real numbers."""
 
     min: float
-    max: float
     mean: float
+    max: float
 
     def __post_init__(self) -> None:
         if not self.min <= self.mean <= self.max:
@@ -259,8 +252,21 @@ class FloatDistribution:
     def uniformly_around(cls, centre: float, radius: float):
         """Creates a uniform distribution on the interval [`centre` - `radius`, `centre` + `radius`]"""
 
-        radius = abs(radius)
+        if radius < 0:
+            raise ValueError('radius must be nonnegative')
         return cls(min=centre - radius, max=centre + radius, mean=centre)
+
+    @classmethod
+    def from_inexact(cls, *, min: float, mean: float, max: float, tolerance: float = 1e-9):
+        """Creates a distribution where `min`, `mean`, and `max` are fixed up to ensure `min` <= `mean` <= `max`.
+
+            Useful for when constructing a distribution from the results of floating point arithmetic."""
+
+        if mean < min and min - mean < tolerance:
+            mean = min
+        if max < mean and mean - max < tolerance:
+            max = mean
+        return cls(min=min, mean=mean, max=max)
 
     def to_str(self, decimals: int = 2) -> str:
         if decimals < 0:
@@ -273,13 +279,6 @@ class FloatDistribution:
             return f'{float_to_str(self.min)}'
         else:
             return f'[{float_to_str(self.min)}, ({float_to_str(self.mean)}), {float_to_str(self.max)}]'
-
-    def approx_eq(self, other: 'FloatDistribution', /, *, rel_tol: float = 1e-6, abs_tol: float = 0) -> bool:
-        """Checks if two distributions have equal min, mean, and max, with tolerance for floating point inaccuracy."""
-
-        return (isclose(self.min, other.min, rel_tol=rel_tol, abs_tol=abs_tol)
-            and isclose(self.max, other.max, rel_tol=rel_tol, abs_tol=abs_tol)
-            and isclose(self.mean, other.mean, rel_tol=rel_tol, abs_tol=abs_tol))
 
     def __neg__(self):
         return type(self)(min=-self.max, max=-self.min, mean=-self.mean)

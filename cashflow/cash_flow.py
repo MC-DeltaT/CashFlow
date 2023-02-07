@@ -7,7 +7,7 @@ from heapq import merge
 from itertools import groupby
 
 from .date_time import DateRange
-from .probability import DEFAULT_CERTAINTY_TOLERANCE, FloatDistribution, effectively_certain
+from .probability import DEFAULT_CERTAINTY_TOLERANCE, FloatDistribution, clamp_certain, effectively_certain
 from .schedule import DateDistribution, EventSchedule
 from .utility import merge_by_date
 
@@ -77,7 +77,7 @@ class CashBalanceDelta:
             return NotImplemented
 
     def __radd__(self, other: FloatDistribution, /):
-        return type(other)(min=other.min + self.min, max=other.max + self.max, mean=other.mean + self.mean)
+        return other.from_inexact(min=other.min + self.min, max=other.max + self.max, mean=other.mean + self.mean)
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,9 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
         yield CashBalanceUpdate(first_occurrence.value, source, CashBalanceDelta(min=-amount.max), cash_flow)
         yield CashBalanceUpdate(first_occurrence.value, sink, CashBalanceDelta(max=amount.max), cash_flow)
 
-        assert event.probability_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound) > 0
+        probability_in_range = event.probability_in(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound)
+        assert probability_in_range > 0
+
         for occurrence in event.iterate(date_range.inclusive_lower_bound, date_range.exclusive_upper_bound):
             # Mean increases linearly up to the end of the day of occurrence (i.e. start of the following day).
             # The following day could be outside the requested date range, but we'll allow it because it's equivalent to
@@ -121,19 +123,16 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
 
             # If we count the occurrence as certain, then it doesn't make much sense to adjust the mean by any
             # probability other than 1.
-            if effectively_certain(occurrence.probability, tolerance=certainty_tolerance):
-                probability = 1
-            else:
-                probability = occurrence.probability
+            update_amount = amount.mean * clamp_certain(occurrence.probability, tolerance=certainty_tolerance)
 
             yield CashBalanceUpdate(
-                following_date, source, CashBalanceDelta(mean=-amount.mean * probability), cash_flow)
+                following_date, source, CashBalanceDelta(mean=-update_amount), cash_flow)
             yield CashBalanceUpdate(
-                following_date, sink, CashBalanceDelta(mean=amount.mean * probability), cash_flow)
+                following_date, sink, CashBalanceDelta(mean=update_amount), cash_flow)
 
         last_occurrence = event.upper_bound_inclusive(date_range.inclusive_upper_bound)
         assert last_occurrence is not None
-        has_upper_bound = effectively_certain(event.cumulate_probability(date_range.inclusive_upper_bound),
+        has_upper_bound = effectively_certain(event.cumulative_probability(date_range.inclusive_upper_bound),
             tolerance=certainty_tolerance)
         if has_upper_bound:
             # Date upper bound - event must have occurred by now.
@@ -141,8 +140,14 @@ def generate_balance_updates(cash_flow: ScheduledCashFlow, date_range: DateRange
             # The following day could be outside the requested date range, but we'll allow it because it's equivalent to
             # the end of the last day in the range.
             following_date = last_occurrence.value + timedelta(days=1)
-            yield CashBalanceUpdate(following_date, source, CashBalanceDelta(max=-amount.min), cash_flow)
-            yield CashBalanceUpdate(following_date, sink, CashBalanceDelta(min=amount.min), cash_flow)
+
+            # Need to scale the update amount by the probability that the event occurs within the specified range to
+            # ensure consistent distributions when accumulating account balances.
+            # Consider the case where the event is possible to occur before the date range, the source's max balance
+            # must not fall below its mean balance (and the sink's min must not rise above its mean).
+            update_amount = amount.min * clamp_certain(probability_in_range, tolerance=certainty_tolerance)
+            yield CashBalanceUpdate(following_date, source, CashBalanceDelta(max=-update_amount), cash_flow)
+            yield CashBalanceUpdate(following_date, sink, CashBalanceDelta(min=update_amount), cash_flow)
 
     events = cash_flow.schedule.iterate(date_range)
     event_update_iterators = map(generate_event_updates, events)
@@ -294,7 +299,7 @@ def generate_cash_flow_logs(cash_flow: ScheduledCashFlow, date_range: DateRange,
 
         exact_lower_bound = first_occurrence == event.outcomes[0]
         exact_upper_bound = (last_occurrence == event.outcomes[-1]
-            and effectively_certain(event.cumulate_probability(last_occurrence.value), tolerance=certainty_tolerance))
+            and effectively_certain(event.cumulative_probability(last_occurrence.value), tolerance=certainty_tolerance))
 
         if first_occurrence.value == last_occurrence.value:
             exact = exact_lower_bound and exact_upper_bound

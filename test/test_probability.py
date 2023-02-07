@@ -1,6 +1,9 @@
+from random import random
+
 from pytest import approx, raises
 
-from cashflow.probability import DiscreteDistribution, DiscreteOutcome, FloatDistribution, effectively_certain
+from cashflow.probability import (
+    DiscreteDistribution, DiscreteOutcome, FloatDistribution, clamp_certain, effectively_certain)
 
 
 def test_effectively_certain_within_tolerance() -> None:
@@ -15,6 +18,20 @@ def test_effectively_certain_exact() -> None:
 def test_effectively_certain_negative_tolerance() -> None:
     with raises(ValueError):
         effectively_certain(1, tolerance=-1e-9)
+
+
+def test_clamp_certain_within_tolerance() -> None:
+    assert clamp_certain(0.999, tolerance=1e-3) == 1
+
+def test_clamp_certain_outside_tolerance() -> None:
+    assert clamp_certain(0.999, tolerance=1e-4) == 0.999
+
+def test_clamp_certain_exact() -> None:
+    assert clamp_certain(1, tolerance=0) == 1 
+
+def test_clamp_certain_negative_tolerance() -> None:
+    with raises(ValueError):
+        clamp_certain(1, tolerance=-1e-9)
 
 
 def test_discrete_outcome_construct_invalid_probability() -> None:
@@ -112,14 +129,14 @@ def test_discrete_distribution_cumulative_probability() -> None:
         5: 0.2,
         6: 0.11
     })
-    assert d.cumulate_probability(0) == 0
-    assert d.cumulate_probability(1) == 0.3
-    assert d.cumulate_probability(2) == approx(0.45)
-    assert d.cumulate_probability(3) == approx(0.49)
-    assert d.cumulate_probability(4) == approx(0.69)
-    assert d.cumulate_probability(5) == approx(0.89)
-    assert d.cumulate_probability(6) == 1
-    assert d.cumulate_probability(7) == 1
+    assert d.cumulative_probability(0) == 0
+    assert d.cumulative_probability(1) == 0.3
+    assert d.cumulative_probability(2) == approx(0.45)
+    assert d.cumulative_probability(3) == approx(0.49)
+    assert d.cumulative_probability(4) == approx(0.69)
+    assert d.cumulative_probability(5) == approx(0.89)
+    assert d.cumulative_probability(6) == 1
+    assert d.cumulative_probability(7) == 1
 
 def test_discrete_distribution_has_possible_outcomes_true() -> None:
     d = DiscreteDistribution.singular(4)
@@ -180,16 +197,6 @@ def test_discrete_distribution_map_values_not_bijection() -> None:
     assert [o.probability for o in result.outcomes] == approx([3/20, 3/20, 2/20, 3/20, 2/20, 3/20, 2/20, 1/20, 1/20])
     assert sum(o.probability for o in d.outcomes) == 1
 
-def test_discrete_distribution_approx_eq() -> None:
-    d1 = DiscreteDistribution.from_probabilities({1: 0.1, 2: 0.2, 3: 0.3})
-    d2 = DiscreteDistribution.from_probabilities({1: 0.11, 2: 0.22, 3: 0.33})
-    d3 = DiscreteDistribution.from_probabilities({1: 0.1, 2: 0.2, 3: 0.3, 4: 0.1})
-    d4 = DiscreteDistribution.from_probabilities({0: 0.1, 2: 0.2, 3: 0.3})
-    assert d1.approx_eq(d2, rel_tol=0.1)
-    assert d1.approx_eq(d2, rel_tol=0.01, abs_tol=0.061)
-    assert not d1.approx_eq(d3, rel_tol=0.1)
-    assert not d1.approx_eq(d4, rel_tol=1, abs_tol=1)
-
 
 def test_float_distribution_construct_invalid1() -> None:
     with raises(ValueError):
@@ -242,18 +249,6 @@ def test_float_distribution_to_str_nonsingular() -> None:
     d = FloatDistribution(min=-1.25, mean=3.4444444444, max=5.654)
     assert d.to_str(3) == '[-1.250, (3.444), 5.654]'
 
-def test_float_distribution_approx_eq() -> None:
-    d = FloatDistribution(min=10, max=20, mean=15)
-    assert d.approx_eq(FloatDistribution(min=12, max=20, mean=15), rel_tol=0.1, abs_tol=2)
-    assert d.approx_eq(FloatDistribution(min=11, max=20, mean=15), rel_tol=0.1)
-    assert d.approx_eq(FloatDistribution(min=10, max=22, mean=15), rel_tol=0.1)
-    assert d.approx_eq(FloatDistribution(min=10, max=20, mean=16.5), rel_tol=0.1)
-    assert d.approx_eq(FloatDistribution(min=11, max=22, mean=16.5), rel_tol=0.1)
-    assert not d.approx_eq(FloatDistribution(min=12, max=20, mean=15), rel_tol=0.1)
-    assert not d.approx_eq(FloatDistribution(min=10, max=23, mean=15), rel_tol=0.1)
-    assert not d.approx_eq(FloatDistribution(min=10, max=20, mean=17), rel_tol=0.1)
-    assert not d.approx_eq(FloatDistribution(min=12, max=23, mean=17), rel_tol=0.1)
-
 def test_float_distribution_neg() -> None:
     d = FloatDistribution(min=-1, max=3, mean=0.5)
     assert -d == FloatDistribution(min=-3, max=1, mean=-0.5)
@@ -265,6 +260,16 @@ def test_float_distribution_add_scalar() -> None:
     assert result.max == approx(19)
     assert result.mean == approx(17.7)
 
+def test_float_distribution_add_scalar_fuzz() -> None:
+    for _ in range(50000):
+        scale1 = random() * 1e6
+        min1 = (random() - 0.5) * scale1
+        mean1 = min1 + random() * scale1
+        max1 = mean1 + random() * scale1
+        d1 = FloatDistribution(min=min1, mean=mean1, max=max1)
+        s = (random() - 0.5) * 1e6
+        d1 + s
+
 def test_float_distribution_add_distribution() -> None:
     d1 = FloatDistribution(min=-100, max=200, mean=123)
     d2 = FloatDistribution(min=-1, max=330, mean=-0.5)
@@ -272,6 +277,20 @@ def test_float_distribution_add_distribution() -> None:
     assert result.min == approx(-101)
     assert result.max == approx(530)
     assert result.mean == approx(122.5)
+
+def test_float_distribution_add_distribution_fuzz() -> None:
+    for _ in range(50000):
+        scale1 = random() * 1e6
+        min1 = (random() - 0.5) * scale1
+        mean1 = min1 + random() * scale1
+        max1 = mean1 + random() * scale1
+        d1 = FloatDistribution(min=min1, mean=mean1, max=max1)
+        scale2 = random() * 1e6
+        min2 = random() * scale2
+        mean2 = min2 + random() * scale2
+        max2 = mean2 + random() * scale2
+        d2 = FloatDistribution(min=min2, mean=mean2, max=max2)
+        d1 + d2
 
 def test_float_distribution_radd_scalar() -> None:
     d = FloatDistribution(min=-1, max=2, mean=0.7)
@@ -293,6 +312,16 @@ def test_float_distribution_mul_scalar_negative() -> None:
     assert result.min == approx(-16.5)
     assert result.max == approx(15)
     assert result.mean == approx(-4.65)
+
+def test_float_distribution_mul_scalar_fuzz() -> None:
+    for _ in range(50000):
+        scale1 = random() * 1e6
+        min1 = (random() - 0.5) * scale1
+        mean1 = min1 + random() * scale1
+        max1 = mean1 + random() * scale1
+        d1 = FloatDistribution(min=min1, mean=mean1, max=max1)
+        s = (random() - 0.5) * 1e6
+        d1 * s
 
 def test_float_distribution_rmul_scalar() -> None:
     d = FloatDistribution(min=-10, max=11, mean=3.1)
